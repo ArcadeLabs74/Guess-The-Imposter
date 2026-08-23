@@ -1,606 +1,350 @@
-import { useState, useEffect } from 'react';
-import type { GamePhase, Player, GameSettings, WordData, ClueItem, VoteResult, GameStats } from './types/game';
-import { BOT_NAMES } from './data/presetWords';
-import { GeminiService } from './services/geminiService';
+import { useEffect, useState } from 'react';
+import {
+  VenetianMask,
+  Home,
+  BookOpen,
+  Volume2,
+  VolumeX,
+  LogOut,
+} from 'lucide-react';
+import type { GamePhase, Player, GameSettings, WordData, ClueItem, VoteResult } from './types/game';
+import { getWord, PLAYER_COLORS } from './data/presetWords';
+import { initButtonFx } from './lib/animations';
 import { soundManager } from './services/soundService';
 
-import { Navbar } from './components/Navbar';
 import { HomeScreen } from './components/HomeScreen';
-import { LobbyScreen } from './components/LobbyScreen';
 import { RoleRevealScreen } from './components/RoleRevealScreen';
-import { ClueDiscussionScreen } from './components/ClueDiscussionScreen';
-import { VotingScreen } from './components/VotingScreen';
-import { VoteRevealScreen } from './components/VoteRevealScreen';
-import { GameOverScreen } from './components/GameOverScreen';
+import { ClueScreen } from './components/ClueScreen';
+import { VoteScreen } from './components/VoteScreen';
+import { ResultsScreen } from './components/ResultsScreen';
 import { HowToPlayModal } from './components/HowToPlayModal';
-import { GeminiSettingsModal } from './components/GeminiSettingsModal';
+
+const DEFAULT_SETTINGS: GameSettings = {
+  imposterCount: 1,
+  roundCount: 2,
+  category: 'random',
+};
 
 export function App() {
-  // Game Flow State
   const [phase, setPhase] = useState<GamePhase>('home');
-  const [roomCode, setRoomCode] = useState<string | null>(null);
-  const [currentPlayerId, setCurrentPlayerId] = useState<string>('p1');
-  const [players, setPlayers] = useState<Player[]>([]);
-  const [settings, setSettings] = useState<GameSettings>({
-    imposterCount: 1,
-    roundCount: 2,
-    turnTimerSeconds: 45,
-    category: 'random',
-    customCategoryPrompt: '',
-    geminiApiKey: '',
-    useGeminiApi: false,
-    botCount: 3,
+  const [showRules, setShowRules] = useState(false);
+  const [muted, setMuted] = useState(() => {
+    const saved = localStorage.getItem('imposter_muted') === '1';
+    soundManager.setMuted(saved);
+    return saved;
   });
 
-  // Active Game Data
-  const [wordData, setWordData] = useState<WordData>({
-    category: 'Sci-Fi & Cyberpunk',
-    secretWord: 'Cybernetic Arm',
-    imposterHint: 'An artificial prosthetic upgrade featuring high-tech titanium and neural links.',
-  });
+  useEffect(() => {
+    initButtonFx();
+  }, []);
+
+  const toggleMute = () => {
+    const next = soundManager.toggleMute();
+    setMuted(next);
+    localStorage.setItem('imposter_muted', next ? '1' : '0');
+  };
+
+  const [players, setPlayers] = useState<Player[]>([]);
+  const [settings, setSettings] = useState<GameSettings>(DEFAULT_SETTINGS);
+  const [wordData, setWordData] = useState<WordData | null>(null);
+
   const [clues, setClues] = useState<ClueItem[]>([]);
   const [currentRound, setCurrentRound] = useState(1);
   const [currentTurnIndex, setCurrentTurnIndex] = useState(0);
-  const [voteResult, setVoteResult] = useState<VoteResult>({
-    votedOutPlayerId: null,
-    votedOutPlayerName: null,
-    votedOutRole: null,
-    isImposterCaught: false,
-    isTie: false,
-    voteCounts: {},
-    skippedCount: 0,
-  });
-  const [gameStats, setGameStats] = useState<GameStats>({
-    winner: 'crew',
-    reason: '',
-    totalRounds: 2,
-  });
+  const [revealIndex, setRevealIndex] = useState(0);
+  const [voterIndex, setVoterIndex] = useState(0);
 
-  // Modals state
-  const [showHowToPlay, setShowHowToPlay] = useState(false);
-  const [showGeminiSettings, setShowGeminiSettings] = useState(false);
-  const [geminiApiKey, setGeminiApiKey] = useState('');
+  const [voteResult, setVoteResult] = useState<VoteResult | null>(null);
+  const [votes, setVotes] = useState<Record<string, string | 'skip'>>({});
+  const [winner, setWinner] = useState<'crew' | 'imposter'>('crew');
+  const [winReason, setWinReason] = useState('');
 
-  // Load API key from storage
-  useEffect(() => {
-    const savedKey = localStorage.getItem('gemini_api_key');
-    if (savedKey) {
-      setGeminiApiKey(savedKey);
-      GeminiService.setApiKey(savedKey);
-    }
-  }, []);
+  // --- Setup ---------------------------------------------------------------
 
-  const handleSaveApiKey = (key: string) => {
-    setGeminiApiKey(key);
-    localStorage.setItem('gemini_api_key', key);
-    setSettings((s) => ({ ...s, geminiApiKey: key, useGeminiApi: !!key }));
-  };
-
-  // Helper to generate room code
-  const generateRoomCode = () => {
-    const prefixes = ['NEON', 'CYBER', 'SHADOW', 'QUANTUM', 'VORTEX', 'GHOST'];
-    const prefix = prefixes[Math.floor(Math.random() * prefixes.length)];
-    const num = Math.floor(100 + Math.random() * 900);
-    return `${prefix}-${num}`;
-  };
-
-  // Helper to create bot player
-  const createBotPlayer = (index: number): Player => {
-    const profile = BOT_NAMES[index % BOT_NAMES.length];
-    return {
-      id: `bot_${index}_${Date.now()}`,
-      name: profile.name,
-      avatar: profile.avatar,
-      color: profile.color,
-      isHost: false,
-      isBot: true,
+  const startGame = (names: string[], gameSettings: GameSettings) => {
+    const roster: Player[] = names.map((name, i) => ({
+      id: `p${i}`,
+      name,
+      color: PLAYER_COLORS[i % PLAYER_COLORS.length],
       role: 'crew',
-      isReady: true,
-    };
-  };
-
-  // 1. Create Room
-  const handleCreateRoom = (
-    playerName: string,
-    avatar: string,
-    color: string,
-    newSettings: GameSettings
-  ) => {
-    const newCode = generateRoomCode();
-    const hostPlayer: Player = {
-      id: 'player_host',
-      name: playerName,
-      avatar,
-      color,
-      isHost: true,
-      isBot: false,
-      role: 'crew',
-      isReady: true,
-    };
-
-    const initialPlayers: Player[] = [hostPlayer];
-    for (let i = 0; i < newSettings.botCount; i++) {
-      initialPlayers.push(createBotPlayer(i));
-    }
-
-    setRoomCode(newCode);
-    setCurrentPlayerId(hostPlayer.id);
-    setPlayers(initialPlayers);
-    setSettings({ ...newSettings, geminiApiKey });
-    setPhase('lobby');
-  };
-
-  // 2. Join Room
-  const handleJoinRoom = (
-    code: string,
-    playerName: string,
-    avatar: string,
-    color: string
-  ) => {
-    const userPlayer: Player = {
-      id: `player_${Date.now()}`,
-      name: playerName,
-      avatar,
-      color,
-      isHost: false,
-      isBot: false,
-      role: 'crew',
-      isReady: true,
-    };
-
-    const hostBot = createBotPlayer(0);
-    hostBot.isHost = true;
-    hostBot.name = 'HostMaster';
-
-    const initialPlayers: Player[] = [hostBot, userPlayer, createBotPlayer(1), createBotPlayer(2)];
-
-    setRoomCode(code);
-    setCurrentPlayerId(userPlayer.id);
-    setPlayers(initialPlayers);
-    setPhase('lobby');
-  };
-
-  // 3. Quick Solo Play (Instant Launch)
-  const handleQuickPlay = async (playerName: string, avatar: string, color: string) => {
-    const userPlayer: Player = {
-      id: 'player_user',
-      name: playerName,
-      avatar,
-      color,
-      isHost: true,
-      isBot: false,
-      role: 'crew',
-      isReady: true,
-    };
-
-    const initialPlayers: Player[] = [
-      userPlayer,
-      createBotPlayer(0),
-      createBotPlayer(1),
-      createBotPlayer(2),
-      createBotPlayer(3),
-    ];
-
-    // Assign 1 imposter randomly
-    const imposterIndex = Math.floor(Math.random() * initialPlayers.length);
-    initialPlayers.forEach((p, idx) => {
-      p.role = idx === imposterIndex ? 'imposter' : 'crew';
-    });
-
-    const generatedWord = await GeminiService.generateWordAndClue('random', undefined, geminiApiKey);
-
-    setRoomCode(generateRoomCode());
-    setCurrentPlayerId(userPlayer.id);
-    setPlayers(initialPlayers);
-    setWordData(generatedWord);
-    setClues([]);
-    setCurrentRound(1);
-    setCurrentTurnIndex(0);
-    setPhase('role_reveal');
-  };
-
-  // 4. Start Game from Lobby
-  const handleStartGame = async () => {
-    const generatedWord = await GeminiService.generateWordAndClue(
-      settings.category,
-      settings.customCategoryPrompt,
-      geminiApiKey
-    );
-
-    const shuffled = [...players];
-    const imposterIndices = new Set<number>();
-    const countToAssign = Math.min(settings.imposterCount, players.length - 1);
-
-    while (imposterIndices.size < countToAssign) {
-      const randIdx = Math.floor(Math.random() * shuffled.length);
-      imposterIndices.add(randIdx);
-    }
-
-    const updatedPlayers = shuffled.map((p, idx) => ({
-      ...p,
-      role: imposterIndices.has(idx) ? ('imposter' as const) : ('crew' as const),
       votedFor: null,
-      hasSubmittedClue: false,
     }));
 
-    setWordData(generatedWord);
-    setPlayers(updatedPlayers);
-    setClues([]);
-    setCurrentRound(1);
-    setCurrentTurnIndex(0);
-    setPhase('role_reveal');
+    const imposterIndices = new Set<number>();
+    const count = Math.min(gameSettings.imposterCount, roster.length - 2);
+    while (imposterIndices.size < count) {
+      imposterIndices.add(Math.floor(Math.random() * roster.length));
+    }
+    roster.forEach((p, i) => {
+      if (imposterIndices.has(i)) p.role = 'imposter';
+    });
+
+    setPlayers(roster);
+    setSettings(gameSettings);
+    setWordData(getWord(gameSettings.category));
+    setRevealIndex(0);
+    setVotes({});
+    setPhase('reveal');
   };
 
-  // 5. Add AI Bot to Lobby
-  const handleAddBot = () => {
-    if (players.length >= 8) return;
-    const newBot = createBotPlayer(players.length);
-    setPlayers([...players, newBot]);
+  // --- Clue phase ----------------------------------------------------------
+
+  const handleConfirmRole = () => {
+    if (revealIndex < players.length - 1) {
+      setRevealIndex(revealIndex + 1);
+    } else {
+      setClues([]);
+      setCurrentRound(1);
+      setCurrentTurnIndex(0);
+      setPhase('clue');
+    }
   };
 
-  // 6. Remove Player/Bot from Lobby
-  const handleRemovePlayer = (id: string) => {
-    setPlayers(players.filter((p) => p.id !== id));
-  };
-
-  // 7. Proceed from Role Reveal to Clue Phase
-  const handleConfirmReady = () => {
-    setPhase('clue_phase');
-  };
-
-  // 8. Add Clue during Discussion
-  const handleAddClue = (clueText: string) => {
-    const activePlayer = players[currentTurnIndex] || players[0];
+  const handleAddClue = (text: string) => {
+    const activePlayer = players[currentTurnIndex];
     const newClue: ClueItem = {
-      id: `clue_${Date.now()}_${Math.random()}`,
+      id: `clue_${Date.now()}`,
       playerId: activePlayer.id,
       playerName: activePlayer.name,
-      playerAvatar: activePlayer.avatar,
       playerColor: activePlayer.color,
-      isBot: activePlayer.isBot,
       round: currentRound,
-      clue: clueText,
-      timestamp: Date.now(),
-      reactions: {},
+      text,
     };
+    const nextClues = [...clues, newClue];
+    setClues(nextClues);
 
-    setClues((prev) => [...prev, newClue]);
-
-    // Advance turn
     const nextTurn = currentTurnIndex + 1;
     if (nextTurn < players.length) {
       setCurrentTurnIndex(nextTurn);
+    } else if (currentRound < settings.roundCount) {
+      setCurrentRound(currentRound + 1);
+      setCurrentTurnIndex(0);
     } else {
-      if (currentRound < settings.roundCount) {
-        setCurrentRound((r) => r + 1);
-        setCurrentTurnIndex(0);
-      } else {
-        soundManager.playEmergency();
-        setPhase('voting_phase');
-      }
+      setVoterIndex(0);
+      setPhase('vote');
     }
   };
 
-  // 9. Add Reaction to a Clue
-  const handleAddReaction = (clueId: string, emoji: string) => {
-    setClues((prev) =>
-      prev.map((c) => {
-        if (c.id === clueId) {
-          const current = c.reactions[emoji] || 0;
-          return {
-            ...c,
-            reactions: { ...c.reactions, [emoji]: current + 1 },
-          };
-        }
-        return c;
-      })
-    );
-  };
+  // --- Voting --------------------------------------------------------------
 
-  // 10. Proceed to Voting
-  const handleProceedToVoting = () => {
-    setPhase('voting_phase');
-  };
-
-  // 11. Cast Vote
   const handleCastVote = (targetId: string | 'skip') => {
-    setPlayers((prev) =>
-      prev.map((p) => (p.id === currentPlayerId ? { ...p, votedFor: targetId } : p))
-    );
+    const voter = players[voterIndex];
+    const updatedVotes = { ...votes, [voter.id]: targetId };
+    setVotes(updatedVotes);
+
+    if (voterIndex < players.length - 1) {
+      setVoterIndex(voterIndex + 1);
+    } else {
+      tallyAndFinish(updatedVotes);
+    }
   };
 
-  // 12. Votes Complete & Calculation
-  const handleVotesComplete = () => {
-    const voteCounts: Record<string, number> = {};
-    let skippedCount = 0;
+  const tallyAndFinish = (allVotes: Record<string, string | 'skip'>) => {
+    const counts: Record<string, number> = {};
+    let skipped = 0;
 
     players.forEach((p) => {
-      let voteTarget = p.votedFor;
-      if (!voteTarget) {
-        const others = players.filter((target) => target.id !== p.id);
-        voteTarget = others[Math.floor(Math.random() * others.length)]?.id || 'skip';
-      }
-
-      if (voteTarget === 'skip') {
-        skippedCount++;
-      } else {
-        voteCounts[voteTarget] = (voteCounts[voteTarget] || 0) + 1;
-      }
+      const target = allVotes[p.id];
+      if (!target || target === 'skip') skipped++;
+      else counts[target] = (counts[target] || 0) + 1;
     });
 
-    let highestCount = 0;
-    let highestPlayerId: string | null = null;
+    let top = 0;
+    let ejectedId: string | null = null;
     let isTie = false;
-
-    Object.entries(voteCounts).forEach(([playerId, count]) => {
-      if (count > highestCount) {
-        highestCount = count;
-        highestPlayerId = playerId;
+    Object.entries(counts).forEach(([id, n]) => {
+      if (n > top) {
+        top = n;
+        ejectedId = id;
         isTie = false;
-      } else if (count === highestCount && highestCount > 0) {
+      } else if (n === top) {
         isTie = true;
       }
     });
 
-    if (skippedCount > highestCount || isTie || !highestPlayerId) {
-      const imposterNames = players.filter((p) => p.role === 'imposter').map((p) => p.name);
+    const imposters = players.filter((p) => p.role === 'imposter');
+    const imposterNames = imposters.map((p) => p.name).join(', ');
+
+    if (!ejectedId || isTie || skipped >= top) {
       setVoteResult({
-        votedOutPlayerId: null,
-        votedOutPlayerName: null,
-        votedOutRole: null,
-        isImposterCaught: false,
+        ejectedPlayerId: null,
+        ejectedPlayerName: null,
+        ejectedRole: null,
         isTie: true,
-        voteCounts,
-        skippedCount,
+        voteCounts: counts,
+        skippedCount: skipped,
       });
-      setGameStats({
-        winner: 'imposter',
-        reason: `The council tied or skipped voting! Imposter (${imposterNames.join(', ')}) survived undetected!`,
-        totalRounds: currentRound,
-      });
+      setWinner('imposter');
+      setWinReason(
+        `The group couldn't agree. The imposter (${imposterNames}) slips away undetected.`
+      );
     } else {
-      const votedPlayer = players.find((p) => p.id === highestPlayerId);
-      const isImpCaught = votedPlayer?.role === 'imposter';
-
+      const ejected = players.find((p) => p.id === ejectedId)!;
+      const caught = ejected.role === 'imposter';
       setVoteResult({
-        votedOutPlayerId: highestPlayerId,
-        votedOutPlayerName: votedPlayer?.name || 'Unknown',
-        votedOutRole: votedPlayer?.role || null,
-        isImposterCaught: isImpCaught,
+        ejectedPlayerId: ejected.id,
+        ejectedPlayerName: ejected.name,
+        ejectedRole: ejected.role,
         isTie: false,
-        voteCounts,
-        skippedCount,
+        voteCounts: counts,
+        skippedCount: skipped,
       });
-
-      if (isImpCaught) {
-        setGameStats({
-          winner: 'crew',
-          reason: `The Crew successfully unmasked and ejected ${votedPlayer?.name} (The Imposter)!`,
-          totalRounds: currentRound,
-        });
+      if (caught) {
+        setWinner('crew');
+        setWinReason(`${ejected.name} was the imposter. The crew wins!`);
       } else {
-        const imposterList = players.filter((p) => p.role === 'imposter').map((p) => p.name);
-        setGameStats({
-          winner: 'imposter',
-          reason: `An innocent Crewmate (${votedPlayer?.name}) was falsely ejected! Imposter (${imposterList.join(', ')}) wins!`,
-          totalRounds: currentRound,
-        });
+        setWinner('imposter');
+        setWinReason(
+          `${ejected.name} was innocent. The real imposter (${imposterNames}) gets away with it.`
+        );
       }
     }
-
-    setPhase('vote_reveal');
+    setPhase('results');
   };
 
-  // 13. Proceed from Vote Reveal to Game Over
-  const handleProceedToGameOver = (_imposterGuess?: string, isCorrectGuess?: boolean) => {
-    if (isCorrectGuess) {
-      setGameStats({
-        winner: 'imposter',
-        reason: `The Imposter correctly guessed the secret word "${wordData.secretWord}" on the final stand! Imposter steals the win!`,
-        totalRounds: currentRound,
-      });
-    }
-    setPhase('game_over');
-  };
+  // --- Post-game -----------------------------------------------------------
 
-  // 14. Rematch (New Word, same lobby)
-  const handlePlayAgain = async () => {
-    const newWord = await GeminiService.generateWordAndClue(
-      settings.category,
-      settings.customCategoryPrompt,
-      geminiApiKey
-    );
-
-    const shuffled = [...players];
-    const imposterIndices = new Set<number>();
-    const countToAssign = Math.min(settings.imposterCount, players.length - 1);
-
-    while (imposterIndices.size < countToAssign) {
-      const randIdx = Math.floor(Math.random() * shuffled.length);
-      imposterIndices.add(randIdx);
-    }
-
-    const updatedPlayers = shuffled.map((p, idx) => ({
+  const handleRematch = () => {
+    const reshuffled: Player[] = players.map((p) => ({
       ...p,
-      role: imposterIndices.has(idx) ? ('imposter' as const) : ('crew' as const),
+      role: 'crew',
       votedFor: null,
-      hasSubmittedClue: false,
     }));
-
-    setWordData(newWord);
-    setPlayers(updatedPlayers);
+    const imposterIndices = new Set<number>();
+    const count = Math.min(settings.imposterCount, reshuffled.length - 2);
+    while (imposterIndices.size < count) {
+      imposterIndices.add(Math.floor(Math.random() * reshuffled.length));
+    }
+    reshuffled.forEach((p, i) => {
+      if (imposterIndices.has(i)) p.role = 'imposter';
+    });
+    setPlayers(reshuffled);
+    setWordData(getWord(settings.category));
     setClues([]);
+    setVoteResult(null);
+    setVotes({});
+    setRevealIndex(0);
     setCurrentRound(1);
     setCurrentTurnIndex(0);
-    setPhase('role_reveal');
+    setPhase('reveal');
   };
 
-  // 15. Leave Room
-  const handleLeaveRoom = () => {
+  const handleReturnHome = () => {
+    if (phase !== 'home' && !window.confirm('Leave current session and return to home?')) return;
     setPhase('home');
-    setRoomCode(null);
+    setPlayers([]);
     setClues([]);
+    setVoteResult(null);
+    setVotes({});
   };
-
-  const currentPlayer = players.find((p) => p.id === currentPlayerId) || players[0];
-  const imposters = players.filter((p) => p.role === 'imposter');
 
   return (
-    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
-      {/* Top Navbar */}
-      <Navbar
-        currentPhase={phase}
-        roomCode={roomCode}
-        onOpenHowToPlay={() => setShowHowToPlay(false)}
-        onOpenGeminiSettings={() => setShowGeminiSettings(true)}
-        onLeaveRoom={handleLeaveRoom}
-        hasGeminiKey={!!geminiApiKey}
-      />
+    <div className="app-shell">
+      {/* Clean Top Navigation Bar */}
+      <header className="app-top-nav">
+        <div className="nav-brand">
+          <span className="status-dot-live" />
+          <span className="nav-brand-text">GTI // SOCIAL DEDUCTION</span>
+        </div>
 
-      {/* Screen Render based on active Phase */}
-      <main style={{ flex: 1 }}>
+        <div className="nav-actions">
+          <button
+            className={`nav-icon-btn ${phase === 'home' ? 'active' : ''}`}
+            onClick={handleReturnHome}
+            aria-label="Home"
+            title="Return to Home"
+          >
+            {phase === 'home' ? <VenetianMask size={17} strokeWidth={2.2} /> : <Home size={17} />}
+          </button>
+          <button
+            className="nav-icon-btn"
+            onClick={() => setShowRules(true)}
+            aria-label="Manual & Rules"
+            title="How to play"
+          >
+            <BookOpen size={16} />
+          </button>
+          <button
+            className="nav-icon-btn"
+            onClick={toggleMute}
+            aria-label="Toggle Sound"
+            title={muted ? 'Unmute' : 'Mute'}
+          >
+            {muted ? <VolumeX size={16} /> : <Volume2 size={16} />}
+          </button>
+          {phase !== 'home' && (
+            <button
+              className="nav-icon-btn"
+              onClick={handleReturnHome}
+              aria-label="Abort Session"
+              title="Exit to Main Menu"
+            >
+              <LogOut size={16} />
+            </button>
+          )}
+        </div>
+      </header>
+
+      {/* Main Screen Content */}
+      <main className="main-content">
         {phase === 'home' && (
-          <HomeScreen
-            onCreateRoom={handleCreateRoom}
-            onJoinRoom={handleJoinRoom}
-            onQuickPlay={handleQuickPlay}
-            onOpenHowToPlay={() => setShowHowToPlay(true)}
-            onOpenGeminiSettings={() => setShowGeminiSettings(true)}
-            hasGeminiKey={!!geminiApiKey}
-          />
+          <HomeScreen onStartGame={startGame} onOpenRules={() => setShowRules(true)} />
         )}
 
-        {phase === 'lobby' && (
-          <LobbyScreen
-            roomCode={roomCode || 'UNKNOWN'}
-            players={players}
-            currentPlayerId={currentPlayerId}
-            settings={settings}
-            onStartGame={handleStartGame}
-            onAddBot={handleAddBot}
-            onRemovePlayer={handleRemovePlayer}
-            onToggleReady={() => {}}
-            onLeaveRoom={handleLeaveRoom}
-          />
-        )}
-
-        {phase === 'role_reveal' && currentPlayer && (
+        {phase === 'reveal' && wordData && (
           <RoleRevealScreen
-            player={currentPlayer}
+            key={revealIndex}
+            players={players}
             wordData={wordData}
-            onConfirmReady={handleConfirmReady}
+            revealIndex={revealIndex}
+            onConfirm={handleConfirmRole}
           />
         )}
 
-        {phase === 'clue_phase' && (
-          <ClueDiscussionScreen
+        {phase === 'clue' && wordData && (
+          <ClueScreen
             players={players}
-            currentPlayerId={currentPlayerId}
             wordData={wordData}
-            settings={settings}
             clues={clues}
             currentRound={currentRound}
+            totalRounds={settings.roundCount}
             currentTurnIndex={currentTurnIndex}
-            onAddClue={handleAddClue}
-            onAddReaction={handleAddReaction}
-            onProceedToVoting={handleProceedToVoting}
+            onSubmitClue={handleAddClue}
+            onCallVote={() => {
+              setVoterIndex(0);
+              setPhase('vote');
+            }}
           />
         )}
 
-        {phase === 'voting_phase' && (
-          <VotingScreen
+        {phase === 'vote' && wordData && (
+          <VoteScreen
+            key={voterIndex}
             players={players}
-            currentPlayerId={currentPlayerId}
-            clues={clues}
-            wordData={wordData}
+            voterIndex={voterIndex}
             onCastVote={handleCastVote}
-            onVotesComplete={handleVotesComplete}
           />
         )}
 
-        {phase === 'vote_reveal' && (
-          <VoteRevealScreen
+        {phase === 'results' && wordData && voteResult && (
+          <ResultsScreen
+            players={players}
+            wordData={wordData}
             voteResult={voteResult}
-            wordData={wordData}
-            players={players}
-            currentPlayerId={currentPlayerId}
-            onProceedToGameOver={handleProceedToGameOver}
-          />
-        )}
-
-        {phase === 'game_over' && (
-          <GameOverScreen
-            stats={gameStats}
-            wordData={wordData}
-            players={players}
-            imposters={imposters}
-            onPlayAgain={handlePlayAgain}
-            onReturnHome={handleLeaveRoom}
-            geminiApiKey={geminiApiKey}
+            winner={winner}
+            reason={winReason}
+            onRematch={handleRematch}
+            onHome={handleReturnHome}
           />
         )}
       </main>
 
-      {/* Interactive UI Phase Quick-Switcher Bar (Footer) */}
-      <footer style={{
-        background: 'rgba(5, 8, 16, 0.9)',
-        borderTop: '1px solid var(--border-subtle)',
-        padding: '10px 20px',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        flexWrap: 'wrap',
-        gap: '12px',
-        fontSize: '12px',
-        color: 'var(--text-muted)',
-      }}>
-        <div>
-          <span>UI Prototype Navigation:</span>
-        </div>
-
-        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-          {(['home', 'lobby', 'role_reveal', 'clue_phase', 'voting_phase', 'vote_reveal', 'game_over'] as GamePhase[]).map((p) => (
-            <button
-              key={p}
-              type="button"
-              onClick={() => {
-                soundManager.playClick();
-                if (players.length === 0 && p !== 'home') {
-                  handleQuickPlay('Agent Alpha', '🕵️', '#06b6d4');
-                }
-                setPhase(p);
-              }}
-              style={{
-                padding: '4px 10px',
-                borderRadius: 'var(--radius-sm)',
-                border: phase === p ? '1px solid var(--cyan-accent)' : '1px solid var(--border-subtle)',
-                background: phase === p ? 'rgba(6, 182, 212, 0.2)' : 'rgba(255,255,255,0.04)',
-                color: phase === p ? 'var(--cyan-accent)' : 'var(--text-secondary)',
-                cursor: 'pointer',
-                fontFamily: 'var(--font-mono)',
-                fontSize: '11px',
-                textTransform: 'uppercase',
-              }}
-            >
-              {p.replace('_', ' ')}
-            </button>
-          ))}
-        </div>
-
-        <div>
-          <span>Guess The Imposter • React + Gemini AI</span>
-        </div>
+      {/* Minimalist Footer */}
+      <footer className="app-footer">
+        GUESS THE IMPOSTER · PASS & PLAY DEDUCTION · 1 DEVICE LOCAL
       </footer>
 
-      {/* Modals */}
-      {showHowToPlay && <HowToPlayModal onClose={() => setShowHowToPlay(false)} />}
-      {showGeminiSettings && (
-        <GeminiSettingsModal
-          currentApiKey={geminiApiKey}
-          onSaveApiKey={handleSaveApiKey}
-          onClose={() => setShowGeminiSettings(false)}
-        />
-      )}
+      {showRules && <HowToPlayModal onClose={() => setShowRules(false)} />}
     </div>
   );
 }

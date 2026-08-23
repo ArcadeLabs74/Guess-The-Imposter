@@ -3,253 +3,114 @@ import type { WordData } from '../types/game';
 export interface CategoryOption {
   id: string;
   name: string;
-  icon: string;
   description: string;
-  badgeColor: string;
 }
 
 export const CATEGORY_OPTIONS: CategoryOption[] = [
-  { id: 'random', name: 'Random Surprise', icon: '🎲', description: 'Any wild topic curated dynamically', badgeColor: '#8b5cf6' },
-  { id: 'scifi', name: 'Sci-Fi & Cyberpunk', icon: '🤖', description: 'Futuristic tech, space, AI & neon realities', badgeColor: '#06b6d4' },
-  { id: 'movies', name: 'Movies & Pop Culture', icon: '🎬', description: 'Blockbusters, iconic characters & cinema', badgeColor: '#f59e0b' },
-  { id: 'food', name: 'Food & Gourmet Delicacies', icon: '🍕', description: 'Dishes, spices, desserts & cuisine', badgeColor: '#ef4444' },
-  { id: 'gaming', name: 'Video Games & Lore', icon: '🎮', description: 'Consoles, famous titles, items & bosses', badgeColor: '#10b981' },
-  { id: 'mythology', name: 'Mythology & Fantasy', icon: '🐉', description: 'Gods, legendary beasts & magic artifacts', badgeColor: '#ec4899' },
-  { id: 'landmarks', name: 'World Wonders & Places', icon: '🗽', description: 'Famous monuments, cities & landscapes', badgeColor: '#3b82f6' },
-  { id: 'espionage', name: 'Secret Agents & Heists', icon: '🕵️', description: 'Gadgets, spycraft, stealth & undercover ops', badgeColor: '#6366f1' },
-  { id: 'nature', name: 'Wildlife & Deep Oceans', icon: '🐙', description: 'Exotic beasts, abyssal wonders & nature', badgeColor: '#14b8a6' },
-  { id: 'custom', name: 'Custom AI Prompt', icon: '✨', description: 'Enter any wild theme for Gemini to generate', badgeColor: '#d946ef' },
+  { id: 'random', name: 'Random Mix', description: 'A surprise pick from every deck' },
+  { id: 'food', name: 'Food & Drinks', description: 'Dishes, snacks and flavours' },
+  { id: 'movies', name: 'Movies & TV', description: 'Films, shows and characters' },
+  { id: 'places', name: 'Places', description: 'Cities, landmarks and countries' },
+  { id: 'animals', name: 'Animals', description: 'Wildlife big and small' },
+  { id: 'gaming', name: 'Video Games', description: 'Consoles, items and icons' },
+  { id: 'sports', name: 'Sports', description: 'Games, gear and events' },
+  { id: 'everyday', name: 'Everyday Objects', description: 'Things you see daily' },
 ];
 
 export const PRESET_WORDS: Record<string, WordData[]> = {
-  scifi: [
-    {
-      category: 'Sci-Fi & Cyberpunk',
-      secretWord: 'Cybernetic Arm',
-      imposterHint: 'An artificial prosthetic upgrade featuring high-tech titanium and neural links.',
-    },
-    {
-      category: 'Sci-Fi & Cyberpunk',
-      secretWord: 'Wormhole',
-      imposterHint: 'A theoretical passage through space-time creating shortcuts across galaxies.',
-    },
-    {
-      category: 'Sci-Fi & Cyberpunk',
-      secretWord: 'Lightsaber',
-      imposterHint: 'An elegant glowing plasma weapon wielded in duels across the stars.',
-    },
-    {
-      category: 'Sci-Fi & Cyberpunk',
-      secretWord: 'Time Machine',
-      imposterHint: 'A device capable of traveling backward or forward into chronological eras.',
-    },
-    {
-      category: 'Sci-Fi & Cyberpunk',
-      secretWord: 'Hologram',
-      imposterHint: 'A 3D projection made purely out of modulated light beams.',
-    },
-    {
-      category: 'Sci-Fi & Cyberpunk',
-      secretWord: 'Nanobots',
-      imposterHint: 'Microscopic automated machines capable of molecular repair and swarm behavior.',
-    },
+  food: [
+    { category: 'Food & Drinks', secretWord: 'Sushi', imposterHint: 'A rolled dish that pairs vinegared rice with fresh fish.' },
+    { category: 'Food & Drinks', secretWord: 'Espresso', imposterHint: 'A small, intense coffee shot crowned with golden crema.' },
+    { category: 'Food & Drinks', secretWord: 'Pancakes', imposterHint: 'A stacked breakfast favourite finished with syrup.' },
+    { category: 'Food & Drinks', secretWord: 'Guacamole', imposterHint: 'A mashed green dip served with tortilla chips.' },
+    { category: 'Food & Drinks', secretWord: 'Croissant', imposterHint: 'A flaky, buttery French pastry best eaten warm.' },
+    { category: 'Food & Drinks', secretWord: 'Milkshake', imposterHint: 'A thick blended drink sipped through a straw.' },
+    { category: 'Food & Drinks', secretWord: 'Popcorn', imposterHint: 'The essential crunchy snack at the cinema.' },
+    { category: 'Food & Drinks', secretWord: 'Barbecue', imposterHint: 'Slow-cooked over smoky coals and slathered in sauce.' },
   ],
   movies: [
-    {
-      category: 'Movies & Pop Culture',
-      secretWord: 'Popcorn',
-      imposterHint: 'A hot, buttery puffed snack essential for watching films in a theater.',
-    },
-    {
-      category: 'Movies & Pop Culture',
-      secretWord: 'Titanic',
-      imposterHint: 'A historic doomed luxury passenger liner that collided with an iceberg.',
-    },
-    {
-      category: 'Movies & Pop Culture',
-      secretWord: 'Red Carpet',
-      imposterHint: 'A formal pathway walked by celebrities and movie stars during award premieres.',
-    },
-    {
-      category: 'Movies & Pop Culture',
-      secretWord: 'Stunt Double',
-      imposterHint: 'A trained professional performing dangerous action scenes in place of the lead actor.',
-    },
-    {
-      category: 'Movies & Pop Culture',
-      secretWord: 'Oscar Trophy',
-      imposterHint: 'A prestigious golden statuette awarded for outstanding cinematic excellence.',
-    },
+    { category: 'Movies & TV', secretWord: 'Titanic', imposterHint: 'A doomed ocean liner at the centre of a blockbuster romance.' },
+    { category: 'Movies & TV', secretWord: 'Superhero', imposterHint: 'Wears a cape and hides behind a secret identity.' },
+    { category: 'Movies & TV', secretWord: 'Sitcom', imposterHint: 'A comedy series filmed mostly on one living-room set.' },
+    { category: 'Movies & TV', secretWord: 'Red Carpet', imposterHint: 'Stars pose for photographers along this famous walkway.' },
+    { category: 'Movies & TV', secretWord: 'Stunt Double', imposterHint: 'Performs the dangerous scenes so the star does not have to.' },
+    { category: 'Movies & TV', secretWord: 'Popcorn Bucket', imposterHint: 'You smuggle this into the theatre instead of buying theirs.' },
+    { category: 'Movies & TV', secretWord: 'Director', imposterHint: 'Shouts "action" and "cut" between takes.' },
+    { category: 'Movies & TV', secretWord: 'Cartoon', imposterHint: 'Drawn frame by frame rather than filmed live.' },
   ],
-  food: [
-    {
-      category: 'Food & Gourmet Delicacies',
-      secretWord: 'Sushi',
-      imposterHint: 'A traditional Japanese dish with vinegared rice and raw fish.',
-    },
-    {
-      category: 'Food & Gourmet Delicacies',
-      secretWord: 'Espresso',
-      imposterHint: 'A concentrated, bold dark coffee shot with a layer of golden crema.',
-    },
-    {
-      category: 'Food & Gourmet Delicacies',
-      secretWord: 'Tiramisu',
-      imposterHint: 'A decadent coffee-flavored Italian dessert layered with mascarpone cheese and cocoa.',
-    },
-    {
-      category: 'Food & Gourmet Delicacies',
-      secretWord: 'Saffron',
-      imposterHint: 'An intensely prized crimson spice harvested by hand from crocus flowers.',
-    },
-    {
-      category: 'Food & Gourmet Delicacies',
-      secretWord: 'Croissant',
-      imposterHint: 'A flaky, buttery crescent-shaped French pastry with crispy golden layers.',
-    },
+  places: [
+    { category: 'Places', secretWord: 'Eiffel Tower', imposterHint: 'An iron lattice tower that defines the Paris skyline.' },
+    { category: 'Places', secretWord: 'Great Wall of China', imposterHint: 'A stone fortification winding thousands of kilometres.' },
+    { category: 'Places', secretWord: 'Pyramids of Giza', imposterHint: 'Ancient desert tombs built for the pharaohs.' },
+    { category: 'Places', secretWord: 'Venice', imposterHint: 'Gondolas glide down streets made of water here.' },
+    { category: 'Places', secretWord: 'Times Square', imposterHint: 'Blazing billboards light up this busy New York plaza.' },
+    { category: 'Places', secretWord: 'Sahara Desert', imposterHint: 'The largest hot expanse of sand dunes on Earth.' },
+    { category: 'Places', secretWord: 'Mount Everest', imposterHint: 'The highest point climbers can reach on the planet.' },
+    { category: 'Places', secretWord: 'Colosseum', imposterHint: 'Gladiators once fought inside this Roman amphitheatre.' },
+  ],
+  animals: [
+    { category: 'Animals', secretWord: 'Chameleon', imposterHint: 'A reptile that changes colour and moves each eye separately.' },
+    { category: 'Animals', secretWord: 'Penguin', imposterHint: 'A bird in a tuxedo suit that would rather swim than fly.' },
+    { category: 'Animals', secretWord: 'Octopus', imposterHint: 'Eight clever arms squeeze through the smallest gaps.' },
+    { category: 'Animals', secretWord: 'Kangaroo', imposterHint: 'Carries its joey in a pouch and travels by hopping.' },
+    { category: 'Animals', secretWord: 'Owl', imposterHint: 'A silent night hunter that can turn its head almost fully around.' },
+    { category: 'Animals', secretWord: 'Dolphin', imposterHint: 'A playful marine mammal that clicks and whistles.' },
+    { category: 'Animals', secretWord: 'Cheetah', imposterHint: 'Built for speed, it is the fastest sprinter on land.' },
+    { category: 'Animals', secretWord: 'Sloth', imposterHint: 'Hangs upside down and moves in extreme slow motion.' },
   ],
   gaming: [
-    {
-      category: 'Video Games & Lore',
-      secretWord: 'Health Potion',
-      imposterHint: 'A red bottled liquid consumed to instantly restore hit points.',
-    },
-    {
-      category: 'Video Games & Lore',
-      secretWord: 'Respawn Point',
-      imposterHint: 'A designated location where defeated characters regenerate back into the match.',
-    },
-    {
-      category: 'Video Games & Lore',
-      secretWord: 'Loot Box',
-      imposterHint: 'A virtual mystery container containing randomized skins or gear of varying rarity.',
-    },
-    {
-      category: 'Video Games & Lore',
-      secretWord: 'Final Boss',
-      imposterHint: 'The ultimate climax adversary encountered at the conclusion of an adventure.',
-    },
-    {
-      category: 'Video Games & Lore',
-      secretWord: 'Speedrun',
-      imposterHint: 'A playstyle dedicated to completing a game as quickly as possible with glitches or mastery.',
-    },
+    { category: 'Video Games', secretWord: 'Health Potion', imposterHint: 'A red bottle that restores your hit points instantly.' },
+    { category: 'Video Games', secretWord: 'Respawn Point', imposterHint: 'Where you reappear after losing a life.' },
+    { category: 'Video Games', secretWord: 'Final Boss', imposterHint: 'The ultimate showdown waiting at the end of the game.' },
+    { category: 'Video Games', secretWord: 'Side Quest', imposterHint: 'An optional detour before continuing the main story.' },
+    { category: 'Video Games', secretWord: 'Speedrun', imposterHint: 'Finishing the whole game as fast as humanly possible.' },
+    { category: 'Video Games', secretWord: 'Loot Box', imposterHint: 'A mystery container with random rewards inside.' },
+    { category: 'Video Games', secretWord: 'Game Over', imposterHint: 'The two dreaded words when your last life runs out.' },
+    { category: 'Video Games', secretWord: 'Power-Up', imposterHint: 'Grab this glowing item for a temporary boost.' },
   ],
-  mythology: [
-    {
-      category: 'Mythology & Fantasy',
-      secretWord: 'Phoenix',
-      imposterHint: 'A mythical avian creature associated with fire that is reborn from its own ashes.',
-    },
-    {
-      category: 'Mythology & Fantasy',
-      secretWord: 'Excalibur',
-      imposterHint: 'A legendary magical sword bestowed by the Lady of the Lake to King Arthur.',
-    },
-    {
-      category: 'Mythology & Fantasy',
-      secretWord: 'Medusa',
-      imposterHint: 'A gorgon with living venomous snakes for hair whose gaze turns mortals to stone.',
-    },
-    {
-      category: 'Mythology & Fantasy',
-      secretWord: 'Minotaur',
-      imposterHint: 'A terrifying beast with the body of a man and the head of a bull trapped inside a labyrinth.',
-    },
-    {
-      category: 'Mythology & Fantasy',
-      secretWord: 'Kraken',
-      imposterHint: 'A colossal multi-tentacled sea monster capable of pulling entire sailing ships into the abyss.',
-    },
+  sports: [
+    { category: 'Sports', secretWord: 'Penalty Kick', imposterHint: 'One shooter against the keeper from twelve yards out.' },
+    { category: 'Sports', secretWord: 'Marathon', imposterHint: 'Exactly 42.2 kilometres of pure endurance.' },
+    { category: 'Sports', secretWord: 'Slam Dunk', imposterHint: 'Force the ball straight down through the hoop.' },
+    { category: 'Sports', secretWord: 'Tennis Court', imposterHint: 'Rallies bounce across the net on this rectangle.' },
+    { category: 'Sports', secretWord: 'Goalkeeper', imposterHint: 'The only player allowed to use their hands.' },
+    { category: 'Sports', secretWord: 'Photo Finish', imposterHint: 'Judges check the camera because two racers were too close to call.' },
+    { category: 'Sports', secretWord: 'Referee', imposterHint: 'Blows the whistle and hands out yellow cards.' },
+    { category: 'Sports', secretWord: 'Hat-Trick', imposterHint: 'Three scores by the same player in one match.' },
   ],
-  landmarks: [
-    {
-      category: 'World Wonders & Places',
-      secretWord: 'Eiffel Tower',
-      imposterHint: 'An iconic wrought-iron lattice tower standing tall on the Champ de Mars in Paris.',
-    },
-    {
-      category: 'World Wonders & Places',
-      secretWord: 'Great Wall of China',
-      imposterHint: 'An ancient massive stone fortification winding thousands of kilometers across mountains.',
-    },
-    {
-      category: 'World Wonders & Places',
-      secretWord: 'Pyramids of Giza',
-      imposterHint: 'Monumental ancient stone tombs built under the blazing desert sun for pharaohs.',
-    },
-    {
-      category: 'World Wonders & Places',
-      secretWord: 'Colosseum',
-      imposterHint: 'A majestic oval amphitheater in central Rome that hosted gladiatorial combats.',
-    },
-    {
-      category: 'World Wonders & Places',
-      secretWord: 'Taj Mahal',
-      imposterHint: 'An ivory-white marble mausoleum on the south bank of the Yamuna river.',
-    },
-  ],
-  espionage: [
-    {
-      category: 'Secret Agents & Heists',
-      secretWord: 'Laser Wire',
-      imposterHint: 'An invisible or glowing security beam system designed to trip alarms when breached.',
-    },
-    {
-      category: 'Secret Agents & Heists',
-      secretWord: 'Disguise Kit',
-      imposterHint: 'A collection of wigs, fake mustaches, and costumes used to assume false identities.',
-    },
-    {
-      category: 'Secret Agents & Heists',
-      secretWord: 'Smoke Grenade',
-      imposterHint: 'A canister that discharges a dense screen of smoke to conceal tactical escapes.',
-    },
-    {
-      category: 'Secret Agents & Heists',
-      secretWord: 'Safe Cracker',
-      imposterHint: 'A stealthy specialist or electronic stethoscope used to manipulate combination vaults.',
-    },
-  ],
-  nature: [
-    {
-      category: 'Wildlife & Deep Oceans',
-      secretWord: 'Chameleon',
-      imposterHint: 'A specialized reptile known for changing colors and moving its eyes independently.',
-    },
-    {
-      category: 'Wildlife & Deep Oceans',
-      secretWord: 'Anglerfish',
-      imposterHint: 'A deep-sea predator equipped with a bioluminescent dorsal lure dangling in the dark.',
-    },
-    {
-      category: 'Wildlife & Deep Oceans',
-      secretWord: 'Electric Eel',
-      imposterHint: 'An aquatic knifefish capable of discharging hundreds of volts of electrical shock.',
-    },
-    {
-      category: 'Wildlife & Deep Oceans',
-      secretWord: 'Giant Sequoia',
-      imposterHint: 'One of the most massive ancient trees on Earth, towering high in coastal forests.',
-    },
+  everyday: [
+    { category: 'Everyday Objects', secretWord: 'Umbrella', imposterHint: 'You carry it folded, then open it when the sky opens.' },
+    { category: 'Everyday Objects', secretWord: 'Alarm Clock', imposterHint: 'It rings early each morning and everyone resents it.' },
+    { category: 'Everyday Objects', secretWord: 'Toothbrush', imposterHint: 'Twice a day it fights plaque in front of the mirror.' },
+    { category: 'Everyday Objects', secretWord: 'Backpack', imposterHint: 'Swing it over both shoulders and carry your day inside it.' },
+    { category: 'Everyday Objects', secretWord: 'Mirror', imposterHint: 'Shows your reflection but remembers nothing.' },
+    { category: 'Everyday Objects', secretWord: 'Doorbell', imposterHint: 'Press it and someone knows you have arrived.' },
+    { category: 'Everyday Objects', secretWord: 'Scissors', imposterHint: 'Two blades working together to make the cut.' },
+    { category: 'Everyday Objects', secretWord: 'Headphones', imposterHint: 'Your private concert nobody else can hear.' },
   ],
 };
 
-export const BOT_NAMES = [
-  { name: 'NeonCipher', avatar: '🤖', color: '#06b6d4' },
-  { name: 'ViperX', avatar: '🐍', color: '#10b981' },
-  { name: 'NovaFlux', avatar: '⚡', color: '#f59e0b' },
-  { name: 'ShadowByte', avatar: '🕵️', color: '#8b5cf6' },
-  { name: 'RubyRebel', avatar: '💎', color: '#ec4899' },
-  { name: 'BlazeCore', avatar: '🔥', color: '#ef4444' },
-  { name: 'Zenith', avatar: '🌌', color: '#3b82f6' },
-  { name: 'GlitchPhantom', avatar: '👾', color: '#14b8a6' },
-];
+export function getWord(categoryId: string): WordData {
+  if (categoryId !== 'random' && PRESET_WORDS[categoryId]) {
+    const list = PRESET_WORDS[categoryId];
+    return list[Math.floor(Math.random() * list.length)];
+  }
+  const allLists = Object.values(PRESET_WORDS);
+  const list = allLists[Math.floor(Math.random() * allLists.length)];
+  return list[Math.floor(Math.random() * list.length)];
+}
 
-export const AVATAR_OPTIONS = [
-  '🤖', '🕵️', '🐱', '🦊', '🚀', '⚡', '🎭', '👾', '👑', '💎', '🔥', '🐉', '🐙', '🛸', '🎯', '🛡️'
-];
-
-export const COLOR_PALETTE = [
-  '#06b6d4', '#8b5cf6', '#ec4899', '#f59e0b', '#10b981', '#ef4444', '#3b82f6', '#14b8a6', '#d946ef', '#f97316'
+export const PLAYER_COLORS = [
+  '#6366F1',
+  '#0EA5E9',
+  '#10B981',
+  '#F59E0B',
+  '#EF4444',
+  '#EC4899',
+  '#8B5CF6',
+  '#14B8A6',
+  '#F97316',
+  '#84CC16',
+  '#06B6D4',
+  '#A855F7',
 ];
