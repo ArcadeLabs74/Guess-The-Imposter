@@ -14,6 +14,9 @@ import {
   Copy,
   Check,
   Radio,
+  Share2,
+  UserPlus,
+  LogIn,
 } from 'lucide-react';
 import type { GameSettings } from '../types/game';
 import { CATEGORY_OPTIONS, PLAYER_COLORS } from '../data/presetWords';
@@ -33,14 +36,75 @@ export function HomeScreen({ onStartGame, onOpenRules }: HomeScreenProps) {
   const setupRef = useRef<HTMLDivElement>(null);
 
   const [gameMode, setGameMode] = useState<'local' | 'online'>('local');
+  const [onlineTab, setOnlineTab] = useState<'host' | 'join'>('host');
   const [copiedCode, setCopiedCode] = useState(false);
+  const [copiedLink, setCopiedLink] = useState(false);
+  const [invitedFriends, setInvitedFriends] = useState(false);
   const [roomCode] = useState('GTI-8492');
+  const [joinCode, setJoinCode] = useState('');
+  const [joinName, setJoinName] = useState('');
+  const [joinedSuccess, setJoinedSuccess] = useState(false);
+
   const [names, setNames] = useState(['', '', '', '']);
   const [settings, setSettings] = useState<GameSettings>({
     imposterCount: 1,
     roundCount: 2,
     category: 'random',
   });
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const urlRoom = params.get('room');
+      if (urlRoom) {
+        setGameMode('online');
+        setOnlineTab('join');
+        setJoinCode(urlRoom.toUpperCase());
+      }
+    }
+  }, []);
+
+  const handleShareLink = async () => {
+    soundManager.playClick();
+    const shareUrl = `${window.location.origin}${window.location.pathname}?room=${roomCode}`;
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: 'Join my Guess The Imposter Game!',
+          text: `Join my Guess The Imposter room with code: ${roomCode}`,
+          url: shareUrl,
+        });
+        return;
+      } catch {
+        // Fallback to clipboard
+      }
+    }
+    navigator.clipboard?.writeText(shareUrl);
+    setCopiedLink(true);
+    setTimeout(() => setCopiedLink(false), 2500);
+  };
+
+  const handleInviteFriends = () => {
+    soundManager.playClick();
+    const inviteMessage = `🕵️‍♂️ Play Guess The Imposter with me!\n\nRoom Code: ${roomCode}\nDirect Link: ${window.location.origin}${window.location.pathname}?room=${roomCode}`;
+    navigator.clipboard?.writeText(inviteMessage);
+    setInvitedFriends(true);
+    setTimeout(() => setInvitedFriends(false), 2500);
+  };
+
+  const handleJoinRoom = () => {
+    if (!joinCode.trim()) return;
+    soundManager.playClick();
+    setJoinedSuccess(true);
+    const newOperative = joinName.trim() || 'Agent Guest';
+    if (!names.includes(newOperative)) {
+      setNames((prev) => [...prev, newOperative]);
+    }
+    setTimeout(() => {
+      setOnlineTab('host');
+      setJoinedSuccess(false);
+    }, 800);
+  };
 
   useEffect(() => {
     animateHeroTitle(heroRef.current);
@@ -244,70 +308,177 @@ export function HomeScreen({ onStartGame, onOpenRules }: HomeScreenProps) {
       <section className="bento-setup-card" data-anim>
         {gameMode === 'online' ? (
           <div className="online-lobby-panel">
-            <div className="online-code-banner">
-              <div>
-                <div className="section-label" style={{ marginBottom: 4 }}>
-                  <Radio size={13} className="status-dot-live" />
-                  ONLINE ROOM CODE · LIVE LOBBY
-                </div>
-                <div className="online-room-code">{roomCode}</div>
-              </div>
-
-              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            {/* Online Tab Switcher: Host vs Join */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+              <div className="online-tab-switch">
                 <button
                   type="button"
-                  className="btn btn-secondary btn-sm"
+                  className={`online-tab-btn ${onlineTab === 'host' ? 'active' : ''}`}
                   onClick={() => {
-                    navigator.clipboard?.writeText(roomCode);
-                    setCopiedCode(true);
                     soundManager.playClick();
-                    setTimeout(() => setCopiedCode(false), 2000);
+                    setOnlineTab('host');
                   }}
                 >
-                  {copiedCode ? <Check size={14} color="var(--accent-strong)" /> : <Copy size={14} />}
-                  {copiedCode ? 'COPIED CODE' : 'COPY CODE'}
+                  <Radio size={13} />
+                  <span>HOST LOBBY</span>
+                </button>
+                <button
+                  type="button"
+                  className={`online-tab-btn ${onlineTab === 'join' ? 'active' : ''}`}
+                  onClick={() => {
+                    soundManager.playClick();
+                    setOnlineTab('join');
+                  }}
+                >
+                  <LogIn size={13} />
+                  <span>ENTER ROOM CODE</span>
                 </button>
               </div>
+
+              {copiedLink && <span className="toast-feedback"><Check size={13} /> Invite Link Copied!</span>}
+              {invitedFriends && <span className="toast-feedback"><Check size={13} /> Invite Message Copied!</span>}
             </div>
 
-            <div className="section-label" style={{ marginTop: 12 }}>
-              <Users size={13} />
-              CONNECTED OPERATIVES ({names.length}/8)
-            </div>
+            {onlineTab === 'host' ? (
+              <>
+                <div className="online-code-banner">
+                  <div>
+                    <div className="section-label" style={{ marginBottom: 4 }}>
+                      <Radio size={13} className="status-dot-live" />
+                      YOUR ROOM CODE
+                    </div>
+                    <div className="online-room-code">{roomCode}</div>
+                  </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '10px' }}>
-              {finalNames.map((name, i) => (
-                <div
-                  key={i}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 10,
-                    padding: '10px 14px',
-                    background: 'var(--bg-elevated)',
-                    borderRadius: 'var(--radius-md)',
-                    border: '1px solid var(--border)',
-                  }}
-                >
-                  <span className="status-dot-live" />
-                  <span
-                    className="player-dot"
-                    style={{
-                      width: 32,
-                      height: 32,
-                      fontSize: 12,
-                      background: PLAYER_COLORS[i % PLAYER_COLORS.length],
+                  <div className="online-actions-group">
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-sm"
+                      onClick={() => {
+                        navigator.clipboard?.writeText(roomCode);
+                        setCopiedCode(true);
+                        soundManager.playClick();
+                        setTimeout(() => setCopiedCode(false), 2000);
+                      }}
+                    >
+                      {copiedCode ? <Check size={14} color="var(--accent-strong)" /> : <Copy size={14} />}
+                      {copiedCode ? 'COPIED' : 'COPY CODE'}
+                    </button>
+
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-sm"
+                      onClick={handleShareLink}
+                    >
+                      <Share2 size={14} />
+                      SHARE LINK
+                    </button>
+
+                    <button
+                      type="button"
+                      className="btn btn-sage btn-sm"
+                      onClick={handleInviteFriends}
+                    >
+                      <UserPlus size={14} />
+                      INVITE FRIENDS
+                    </button>
+                  </div>
+                </div>
+
+                <div className="section-label" style={{ marginTop: 8 }}>
+                  <Users size={13} />
+                  CONNECTED OPERATIVES ({names.length}/8)
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '10px' }}>
+                  {finalNames.map((name, i) => (
+                    <div
+                      key={i}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 10,
+                        padding: '12px 16px',
+                        background: 'var(--bg-elevated)',
+                        borderRadius: 'var(--radius-md)',
+                        border: '1px solid var(--border)',
+                      }}
+                    >
+                      <span className="status-dot-live" />
+                      <span
+                        className="player-dot"
+                        style={{
+                          width: 34,
+                          height: 34,
+                          fontSize: 13,
+                          background: PLAYER_COLORS[i % PLAYER_COLORS.length],
+                        }}
+                      >
+                        {name.charAt(0).toUpperCase()}
+                      </span>
+                      <span style={{ fontWeight: 700, fontSize: 14, color: 'var(--ink)' }}>{name}</span>
+                      <span style={{ marginLeft: 'auto', fontSize: 10.5, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', fontWeight: 600 }}>
+                        {i === 0 ? 'HOST' : 'READY'}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </>
+            ) : (
+              <div style={{ background: 'var(--bg-elevated)', padding: '22px', borderRadius: 'var(--radius-lg)', border: '1px solid var(--border-strong)' }}>
+                <div className="section-label" style={{ marginBottom: 12 }}>
+                  <LogIn size={13} />
+                  JOIN MULTIPLAYER ROOM
+                </div>
+
+                <div className="online-join-grid">
+                  <div className="online-input-box">
+                    <label>YOUR CODENAME</label>
+                    <input
+                      className="input"
+                      value={joinName}
+                      placeholder="e.g. Agent Phoenix"
+                      maxLength={16}
+                      onChange={(e) => setJoinName(e.target.value)}
+                    />
+                  </div>
+
+                  <div className="online-input-box">
+                    <label>ENTER ROOM CODE</label>
+                    <input
+                      className="input online-input-code"
+                      value={joinCode}
+                      placeholder="GTI-8492"
+                      maxLength={10}
+                      onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
+                    />
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', gap: 12, marginTop: 18, alignItems: 'center', flexWrap: 'wrap' }}>
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    disabled={!joinCode.trim()}
+                    onClick={handleJoinRoom}
+                  >
+                    {joinedSuccess ? <Check size={16} /> : <LogIn size={16} />}
+                    {joinedSuccess ? 'ROOM CONNECTED!' : 'CONNECT & JOIN LOBBY ↗'}
+                  </button>
+
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    onClick={() => {
+                      setJoinCode('GTI-8492');
+                      soundManager.playClick();
                     }}
                   >
-                    {name.charAt(0).toUpperCase()}
-                  </span>
-                  <span style={{ fontWeight: 600, fontSize: 13.5, color: 'var(--ink)' }}>{name}</span>
-                  <span style={{ marginLeft: 'auto', fontSize: 10, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
-                    {i === 0 ? 'HOST' : 'READY'}
-                  </span>
+                    Use Code: GTI-8492
+                  </button>
                 </div>
-              ))}
-            </div>
+              </div>
+            )}
           </div>
         ) : (
           <>
