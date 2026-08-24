@@ -7,7 +7,6 @@ import {
   Layers,
   Zap,
   BookOpen,
-  ArrowUpRight,
   VenetianMask,
   Smartphone,
   Globe,
@@ -17,33 +16,53 @@ import {
   Share2,
   UserPlus,
   LogIn,
+  Loader2,
 } from 'lucide-react';
-import type { GameSettings } from '../types/game';
+import type { GameSettings, Player, DbRoom } from '../types/game';
 import { CATEGORY_OPTIONS, PLAYER_COLORS } from '../data/presetWords';
 import { animateHeroTitle, animateScreenIn, popIn } from '../lib/animations';
 import { soundManager } from '../services/soundService';
 
 interface HomeScreenProps {
-  onStartGame: (names: string[], settings: GameSettings) => void;
+  onStartLocalGame: (names: string[], settings: GameSettings) => void;
   onOpenRules: () => void;
+  // Supabase Online Props
+  onlineRoom?: DbRoom | null;
+  onlinePlayers?: Player[];
+  isHostingOnline?: boolean;
+  onHostOnlineRoom?: (hostName: string, hostColor: string, settings: GameSettings) => Promise<void>;
+  onJoinOnlineRoom?: (code: string, playerName: string, playerColor: string) => Promise<void>;
+  onStartOnlineGame?: () => Promise<void>;
+  onLeaveOnlineRoom?: () => void;
 }
 
 const MIN_PLAYERS = 3;
 const MAX_PLAYERS = 12;
 
-export function HomeScreen({ onStartGame, onOpenRules }: HomeScreenProps) {
+export function HomeScreen({
+  onStartLocalGame,
+  onOpenRules,
+  onlineRoom,
+  onlinePlayers = [],
+  isHostingOnline = false,
+  onHostOnlineRoom,
+  onJoinOnlineRoom,
+  onStartOnlineGame,
+  onLeaveOnlineRoom,
+}: HomeScreenProps) {
   const heroRef = useRef<HTMLDivElement>(null);
   const setupRef = useRef<HTMLDivElement>(null);
 
-  const [gameMode, setGameMode] = useState<'local' | 'online'>('local');
+  const [gameMode, setGameMode] = useState<'local' | 'online'>(onlineRoom ? 'online' : 'local');
   const [onlineTab, setOnlineTab] = useState<'host' | 'join'>('host');
   const [copiedCode, setCopiedCode] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
   const [invitedFriends, setInvitedFriends] = useState(false);
-  const [roomCode] = useState('GTI-8492');
   const [joinCode, setJoinCode] = useState('');
-  const [joinName, setJoinName] = useState('');
-  const [joinedSuccess, setJoinedSuccess] = useState(false);
+  const [joinName, setJoinName] = useState('Agent Phoenix');
+  const [hostName, setHostName] = useState('Host Operative');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [onlineError, setOnlineError] = useState<string | null>(null);
 
   const [names, setNames] = useState(['', '', '', '']);
   const [settings, setSettings] = useState<GameSettings>({
@@ -51,6 +70,8 @@ export function HomeScreen({ onStartGame, onOpenRules }: HomeScreenProps) {
     roundCount: 2,
     category: 'random',
   });
+
+  const activeRoomCode = onlineRoom?.code || '';
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -65,18 +86,19 @@ export function HomeScreen({ onStartGame, onOpenRules }: HomeScreenProps) {
   }, []);
 
   const handleShareLink = async () => {
+    if (!activeRoomCode) return;
     soundManager.playClick();
-    const shareUrl = `${window.location.origin}${window.location.pathname}?room=${roomCode}`;
+    const shareUrl = `${window.location.origin}${window.location.pathname}?room=${activeRoomCode}`;
     if (navigator.share) {
       try {
         await navigator.share({
           title: 'Join my Guess The Imposter Game!',
-          text: `Join my Guess The Imposter room with code: ${roomCode}`,
+          text: `Join my Guess The Imposter room with code: ${activeRoomCode}`,
           url: shareUrl,
         });
         return;
       } catch {
-        // Fallback to clipboard
+        // fallback
       }
     }
     navigator.clipboard?.writeText(shareUrl);
@@ -85,25 +107,43 @@ export function HomeScreen({ onStartGame, onOpenRules }: HomeScreenProps) {
   };
 
   const handleInviteFriends = () => {
+    if (!activeRoomCode) return;
     soundManager.playClick();
-    const inviteMessage = `🕵️‍♂️ Play Guess The Imposter with me!\n\nRoom Code: ${roomCode}\nDirect Link: ${window.location.origin}${window.location.pathname}?room=${roomCode}`;
+    const inviteMessage = `🕵️‍♂️ Play Guess The Imposter with me!\n\nRoom Code: ${activeRoomCode}\nDirect Link: ${window.location.origin}${window.location.pathname}?room=${activeRoomCode}`;
     navigator.clipboard?.writeText(inviteMessage);
     setInvitedFriends(true);
     setTimeout(() => setInvitedFriends(false), 2500);
   };
 
-  const handleJoinRoom = () => {
-    if (!joinCode.trim()) return;
+  const handleCreateOnline = async () => {
+    if (!onHostOnlineRoom) return;
+    setOnlineError(null);
+    setIsSubmitting(true);
     soundManager.playClick();
-    setJoinedSuccess(true);
-    const newOperative = joinName.trim() || 'Agent Guest';
-    if (!names.includes(newOperative)) {
-      setNames((prev) => [...prev, newOperative]);
+    try {
+      await onHostOnlineRoom(hostName, PLAYER_COLORS[0], settings);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Failed to create room';
+      setOnlineError(msg);
+    } finally {
+      setIsSubmitting(false);
     }
-    setTimeout(() => {
-      setOnlineTab('host');
-      setJoinedSuccess(false);
-    }, 800);
+  };
+
+  const handleJoinOnline = async () => {
+    if (!onJoinOnlineRoom || !joinCode.trim()) return;
+    setOnlineError(null);
+    setIsSubmitting(true);
+    soundManager.playClick();
+    try {
+      const colorIndex = (onlinePlayers.length + 1) % PLAYER_COLORS.length;
+      await onJoinOnlineRoom(joinCode.trim().toUpperCase(), joinName.trim() || 'Agent Guest', PLAYER_COLORS[colorIndex]);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Failed to join room';
+      setOnlineError(msg);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   useEffect(() => {
@@ -133,11 +173,16 @@ export function HomeScreen({ onStartGame, onOpenRules }: HomeScreenProps) {
   };
 
   const finalNames = names.map((n, i) => n.trim() || `Player ${i + 1}`);
-  const canStart = names.length >= MIN_PLAYERS;
+  const canStartLocal = names.length >= MIN_PLAYERS;
+  const canStartOnline = onlinePlayers.length >= MIN_PLAYERS;
 
   const start = () => {
     soundManager.playCardFlip();
-    onStartGame(finalNames, settings);
+    if (gameMode === 'online') {
+      if (onStartOnlineGame) onStartOnlineGame();
+    } else {
+      onStartLocalGame(finalNames, settings);
+    }
   };
 
   return (
@@ -155,7 +200,7 @@ export function HomeScreen({ onStartGame, onOpenRules }: HomeScreenProps) {
 
         <div className="brand-spine-footer">
           <span className="status-dot-live" />
-          <span className="brand-spine-tag">PASS & PLAY</span>
+          <span className="brand-spine-tag">{gameMode === 'local' ? 'PASS & PLAY' : 'ONLINE MULTIPLAYER'}</span>
         </div>
       </aside>
 
@@ -170,41 +215,14 @@ export function HomeScreen({ onStartGame, onOpenRules }: HomeScreenProps) {
             </h1>
             <div className="mission-subline">
               <Zap size={14} />
-              <span>PASS & PLAY · 60S PER TURN · ZERO SETUP REQUIRED</span>
+              <span>{gameMode === 'local' ? 'PASS & PLAY · 60S PER TURN · ZERO SETUP' : 'ONLINE SUPABASE MULTIPLAYER · MULTI-DEVICE'}</span>
             </div>
           </div>
         </div>
       </section>
 
-      {/* 3. Hero Featured Card with Signature Inverted Corner Notch */}
+      {/* 3. Hero Featured Card */}
       <section className="corner-notch-card hero-featured-card" data-anim>
-        {/* The Signature Inverted Corner Notch Dock with Concave Fillets */}
-        <div className="notch-dock">
-          <button
-            className="notch-arrow-btn"
-            onClick={start}
-            disabled={!canStart}
-            aria-label="Start Game"
-            title="Start Game Now"
-          >
-            <ArrowUpRight size={26} strokeWidth={2.4} />
-          </button>
-        </div>
-
-        {/* Top-Left Inverted Concave Fillet */}
-        <div className="notch-fillet-tl" aria-hidden="true">
-          <svg viewBox="0 0 28 28" fill="none" className="fillet-svg">
-            <path d="M 0 0 C 15.464 0 28 12.536 28 28 V 0 H 0 Z" fill="var(--parent-bg)" />
-          </svg>
-        </div>
-
-        {/* Bottom-Right Inverted Concave Fillet for Top Notch */}
-        <div className="notch-fillet-br" aria-hidden="true">
-          <svg viewBox="0 0 28 28" fill="none" className="fillet-svg">
-            <path d="M 0 0 C 15.464 0 28 12.536 28 28 V 0 H 0 Z" fill="var(--parent-bg)" />
-          </svg>
-        </div>
-
         {/* Bottom-Right Notch Dock for Separated Mode Buttons */}
         <div className="notch-dock-bottom">
           <div className="separated-mode-group">
@@ -265,13 +283,13 @@ export function HomeScreen({ onStartGame, onOpenRules }: HomeScreenProps) {
 
           <div className="hero-spec-bullets">
             <span>
-              <span className="hero-spec-dot" /> {names.length} ACTIVE CREW
+              <span className="hero-spec-dot" /> {gameMode === 'online' ? (onlinePlayers.length || 0) : names.length} ACTIVE CREW
             </span>
             <span>
-              <span className="hero-spec-dot" /> {settings.roundCount} CLUE ROUNDS
+              <span className="hero-spec-dot" /> {settings.roundCount} {settings.roundCount === 1 ? 'ROUND' : 'ROUNDS'}
             </span>
             <span>
-              <span className="hero-spec-dot" /> {gameMode === 'local' ? 'PASS & PLAY' : 'ONLINE LOBBY'}
+              <span className="hero-spec-dot" /> {gameMode === 'local' ? 'PASS & PLAY' : 'ONLINE SUPABASE LOBBY'}
             </span>
           </div>
         </div>
@@ -289,7 +307,7 @@ export function HomeScreen({ onStartGame, onOpenRules }: HomeScreenProps) {
             Drop subtle clues, read the room, and vote before they escape.
           </p>
           <div className="manual-spec-list">
-            <div>• MODE: 100% OFFLINE PASS & PLAY</div>
+            <div>• MODE: {gameMode === 'local' ? 'LOCAL PASS & PLAY' : 'ONLINE MULTIPLAYER'}</div>
             <div>• DETECT: EMERGENCY ROUND VOTE</div>
           </div>
         </div>
@@ -308,46 +326,22 @@ export function HomeScreen({ onStartGame, onOpenRules }: HomeScreenProps) {
       <section className="bento-setup-card" data-anim>
         {gameMode === 'online' ? (
           <div className="online-lobby-panel">
-            {/* Online Tab Switcher: Host vs Join */}
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
-              <div className="online-tab-switch">
-                <button
-                  type="button"
-                  className={`online-tab-btn ${onlineTab === 'host' ? 'active' : ''}`}
-                  onClick={() => {
-                    soundManager.playClick();
-                    setOnlineTab('host');
-                  }}
-                >
-                  <Radio size={13} />
-                  <span>HOST LOBBY</span>
-                </button>
-                <button
-                  type="button"
-                  className={`online-tab-btn ${onlineTab === 'join' ? 'active' : ''}`}
-                  onClick={() => {
-                    soundManager.playClick();
-                    setOnlineTab('join');
-                  }}
-                >
-                  <LogIn size={13} />
-                  <span>ENTER ROOM CODE</span>
-                </button>
+            {onlineError && (
+              <div style={{ padding: '10px 14px', background: 'rgba(239, 68, 68, 0.15)', border: '1px solid var(--danger)', borderRadius: 'var(--radius-md)', color: 'var(--danger)', fontSize: 13, marginBottom: 12 }}>
+                {onlineError}
               </div>
+            )}
 
-              {copiedLink && <span className="toast-feedback"><Check size={13} /> Invite Link Copied!</span>}
-              {invitedFriends && <span className="toast-feedback"><Check size={13} /> Invite Message Copied!</span>}
-            </div>
-
-            {onlineTab === 'host' ? (
+            {/* If Already In an Online Room */}
+            {onlineRoom ? (
               <>
                 <div className="online-code-banner">
                   <div>
                     <div className="section-label" style={{ marginBottom: 4 }}>
                       <Radio size={13} className="status-dot-live" />
-                      YOUR ROOM CODE
+                      ACTIVE ROOM LOBBY
                     </div>
-                    <div className="online-room-code">{roomCode}</div>
+                    <div className="online-room-code">{onlineRoom.code}</div>
                   </div>
 
                   <div className="online-actions-group">
@@ -355,7 +349,7 @@ export function HomeScreen({ onStartGame, onOpenRules }: HomeScreenProps) {
                       type="button"
                       className="btn btn-secondary btn-sm"
                       onClick={() => {
-                        navigator.clipboard?.writeText(roomCode);
+                        navigator.clipboard?.writeText(onlineRoom.code);
                         setCopiedCode(true);
                         soundManager.playClick();
                         setTimeout(() => setCopiedCode(false), 2000);
@@ -382,18 +376,28 @@ export function HomeScreen({ onStartGame, onOpenRules }: HomeScreenProps) {
                       <UserPlus size={14} />
                       INVITE FRIENDS
                     </button>
+
+                    {onLeaveOnlineRoom && (
+                      <button
+                        type="button"
+                        className="btn btn-danger btn-sm"
+                        onClick={onLeaveOnlineRoom}
+                      >
+                        LEAVE ROOM
+                      </button>
+                    )}
                   </div>
                 </div>
 
-                <div className="section-label" style={{ marginTop: 8 }}>
+                <div className="section-label" style={{ marginTop: 12 }}>
                   <Users size={13} />
-                  CONNECTED OPERATIVES ({names.length}/8)
+                  CONNECTED OPERATIVES ({onlinePlayers.length}/12) {onlinePlayers.length < 3 && '(Min 3 to launch)'}
                 </div>
 
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '10px' }}>
-                  {finalNames.map((name, i) => (
+                  {onlinePlayers.map((player) => (
                     <div
-                      key={i}
+                      key={player.id}
                       style={{
                         display: 'flex',
                         alignItems: 'center',
@@ -411,73 +415,128 @@ export function HomeScreen({ onStartGame, onOpenRules }: HomeScreenProps) {
                           width: 34,
                           height: 34,
                           fontSize: 13,
-                          background: PLAYER_COLORS[i % PLAYER_COLORS.length],
+                          background: player.color,
                         }}
                       >
-                        {name.charAt(0).toUpperCase()}
+                        {player.name.charAt(0).toUpperCase()}
                       </span>
-                      <span style={{ fontWeight: 700, fontSize: 14, color: 'var(--ink)' }}>{name}</span>
+                      <span style={{ fontWeight: 700, fontSize: 14, color: 'var(--ink)' }}>{player.name}</span>
                       <span style={{ marginLeft: 'auto', fontSize: 10.5, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', fontWeight: 600 }}>
-                        {i === 0 ? 'HOST' : 'READY'}
+                        {player.isHost ? 'HOST' : 'CONNECTED'}
                       </span>
                     </div>
                   ))}
                 </div>
               </>
             ) : (
-              <div style={{ background: 'var(--bg-elevated)', padding: '22px', borderRadius: 'var(--radius-lg)', border: '1px solid var(--border-strong)' }}>
-                <div className="section-label" style={{ marginBottom: 12 }}>
-                  <LogIn size={13} />
-                  JOIN MULTIPLAYER ROOM
-                </div>
-
-                <div className="online-join-grid">
-                  <div className="online-input-box">
-                    <label>YOUR CODENAME</label>
-                    <input
-                      className="input"
-                      value={joinName}
-                      placeholder="e.g. Agent Phoenix"
-                      maxLength={16}
-                      onChange={(e) => setJoinName(e.target.value)}
-                    />
+              /* Online Tab Switcher: Host vs Join */
+              <>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+                  <div className="online-tab-switch">
+                    <button
+                      type="button"
+                      className={`online-tab-btn ${onlineTab === 'host' ? 'active' : ''}`}
+                      onClick={() => {
+                        soundManager.playClick();
+                        setOnlineTab('host');
+                      }}
+                    >
+                      <Radio size={13} />
+                      <span>CREATE NEW ROOM</span>
+                    </button>
+                    <button
+                      type="button"
+                      className={`online-tab-btn ${onlineTab === 'join' ? 'active' : ''}`}
+                      onClick={() => {
+                        soundManager.playClick();
+                        setOnlineTab('join');
+                      }}
+                    >
+                      <LogIn size={13} />
+                      <span>JOIN WITH CODE</span>
+                    </button>
                   </div>
 
-                  <div className="online-input-box">
-                    <label>ENTER ROOM CODE</label>
-                    <input
-                      className="input online-input-code"
-                      value={joinCode}
-                      placeholder="GTI-8492"
-                      maxLength={10}
-                      onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
-                    />
+                  {copiedLink && <span className="toast-feedback"><Check size={13} /> Invite Link Copied!</span>}
+                  {invitedFriends && <span className="toast-feedback"><Check size={13} /> Invite Message Copied!</span>}
+                </div>
+
+                {onlineTab === 'host' ? (
+                  <div style={{ background: 'var(--bg-elevated)', padding: '22px', borderRadius: 'var(--radius-lg)', border: '1px solid var(--border-strong)', marginTop: 14 }}>
+                    <div className="section-label" style={{ marginBottom: 12 }}>
+                      <Radio size={13} />
+                      HOST ONLINE MULTIPLAYER ROOM (SUPABASE)
+                    </div>
+
+                    <div className="online-join-grid">
+                      <div className="online-input-box">
+                        <label>HOST CODENAME</label>
+                        <input
+                          className="input"
+                          value={hostName}
+                          placeholder="Host Operative"
+                          maxLength={16}
+                          onChange={(e) => setHostName(e.target.value)}
+                        />
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      className="btn btn-primary"
+                      style={{ marginTop: 16 }}
+                      disabled={isSubmitting}
+                      onClick={handleCreateOnline}
+                    >
+                      {isSubmitting ? <Loader2 size={16} className="animate-spin" /> : <Radio size={16} />}
+                      <span>CREATE ONLINE ROOM & GENERATE CODE ↗</span>
+                    </button>
                   </div>
-                </div>
+                ) : (
+                  <div style={{ background: 'var(--bg-elevated)', padding: '22px', borderRadius: 'var(--radius-lg)', border: '1px solid var(--border-strong)', marginTop: 14 }}>
+                    <div className="section-label" style={{ marginBottom: 12 }}>
+                      <LogIn size={13} />
+                      JOIN MULTIPLAYER ROOM
+                    </div>
 
-                <div style={{ display: 'flex', gap: 12, marginTop: 18, alignItems: 'center', flexWrap: 'wrap' }}>
-                  <button
-                    type="button"
-                    className="btn btn-primary"
-                    disabled={!joinCode.trim()}
-                    onClick={handleJoinRoom}
-                  >
-                    {joinedSuccess ? <Check size={16} /> : <LogIn size={16} />}
-                    {joinedSuccess ? 'ROOM CONNECTED!' : 'CONNECT & JOIN LOBBY ↗'}
-                  </button>
+                    <div className="online-join-grid">
+                      <div className="online-input-box">
+                        <label>YOUR CODENAME</label>
+                        <input
+                          className="input"
+                          value={joinName}
+                          placeholder="e.g. Agent Phoenix"
+                          maxLength={16}
+                          onChange={(e) => setJoinName(e.target.value)}
+                        />
+                      </div>
 
-                  <button
-                    type="button"
-                    className="btn btn-secondary btn-sm"
-                    onClick={() => {
-                      setJoinCode('GTI-8492');
-                      soundManager.playClick();
-                    }}
-                  >
-                    Use Code: GTI-8492
-                  </button>
-                </div>
-              </div>
+                      <div className="online-input-box">
+                        <label>ENTER ROOM CODE</label>
+                        <input
+                          className="input online-input-code"
+                          value={joinCode}
+                          placeholder="GTI-8492"
+                          maxLength={10}
+                          onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
+                        />
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'flex', gap: 12, marginTop: 18, alignItems: 'center', flexWrap: 'wrap' }}>
+                      <button
+                        type="button"
+                        className="btn btn-primary"
+                        disabled={!joinCode.trim() || isSubmitting}
+                        onClick={handleJoinOnline}
+                      >
+                        {isSubmitting ? <Loader2 size={16} className="animate-spin" /> : <LogIn size={16} />}
+                        <span>CONNECT & JOIN LOBBY ↗</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </>
             )}
           </div>
         ) : (
@@ -575,12 +634,12 @@ export function HomeScreen({ onStartGame, onOpenRules }: HomeScreenProps) {
                   setSettings({
                     ...settings,
                     imposterCount: Math.min(
-                      Math.floor((names.length - 1) / 2),
+                      Math.floor(((gameMode === 'online' ? (onlinePlayers.length || 4) : names.length) - 1) / 2) || 1,
                       settings.imposterCount + 1
                     ),
                   })
                 }
-                disabled={settings.imposterCount >= Math.floor((names.length - 1) / 2)}
+                disabled={settings.imposterCount >= Math.max(1, Math.floor(((gameMode === 'online' ? (onlinePlayers.length || 4) : names.length) - 1) / 2))}
                 aria-label="More imposters"
               >
                 +
@@ -591,23 +650,65 @@ export function HomeScreen({ onStartGame, onOpenRules }: HomeScreenProps) {
           <div className="setting-row">
             <div>
               <div className="setting-name">Clue Rounds</div>
-              <div className="setting-desc">Passes per session</div>
+              <div className="setting-desc">Number of discussion passes</div>
             </div>
-            <div className="segmented">
-              {[1, 2, 3].map((r) => (
-                <button
-                  key={r}
-                  className={settings.roundCount === r ? 'active' : ''}
-                  onClick={() => {
-                    soundManager.playClick();
-                    setSettings({ ...settings, roundCount: r });
-                  }}
-                >
-                  {r} {r === 1 ? 'Round' : 'Rounds'}
-                </button>
-              ))}
+            <div className="stepper">
+              <button
+                onClick={() => {
+                  soundManager.playClick();
+                  setSettings({ ...settings, roundCount: Math.max(1, settings.roundCount - 1) });
+                }}
+                disabled={settings.roundCount <= 1}
+                aria-label="Fewer rounds"
+              >
+                −
+              </button>
+              <span className="stepper-value" style={{ minWidth: 44, textAlign: 'center' }}>
+                {settings.roundCount} {settings.roundCount === 1 ? 'Rnd' : 'Rnds'}
+              </span>
+              <button
+                onClick={() => {
+                  soundManager.playClick();
+                  setSettings({ ...settings, roundCount: Math.min(20, settings.roundCount + 1) });
+                }}
+                disabled={settings.roundCount >= 20}
+                aria-label="More rounds"
+              >
+                +
+              </button>
             </div>
           </div>
+        </div>
+
+        {/* Quick Rounds Pill Presets */}
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', marginTop: -6 }}>
+          <span style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', textTransform: 'uppercase' }}>
+            Quick select:
+          </span>
+          {[1, 2, 3, 4, 5, 8, 10].map((r) => (
+            <button
+              key={r}
+              type="button"
+              className={`segmented-chip ${settings.roundCount === r ? 'active' : ''}`}
+              style={{
+                padding: '3px 10px',
+                borderRadius: '999px',
+                fontSize: 11,
+                fontFamily: 'var(--font-mono)',
+                fontWeight: 600,
+                border: settings.roundCount === r ? '1px solid var(--accent-strong)' : '1px solid var(--border)',
+                background: settings.roundCount === r ? 'var(--accent-dim)' : 'var(--bg-elevated)',
+                color: settings.roundCount === r ? 'var(--accent-strong)' : 'var(--text-secondary)',
+                cursor: 'pointer',
+              }}
+              onClick={() => {
+                soundManager.playClick();
+                setSettings({ ...settings, roundCount: r });
+              }}
+            >
+              {r} {r === 1 ? 'Rnd' : 'Rnds'}
+            </button>
+          ))}
         </div>
 
         <hr className="divider" />
@@ -638,10 +739,16 @@ export function HomeScreen({ onStartGame, onOpenRules }: HomeScreenProps) {
         <button
           className="btn btn-primary btn-block btn-lg"
           onClick={start}
-          disabled={!canStart}
+          disabled={gameMode === 'online' ? (!onlineRoom || !isHostingOnline || !canStartOnline) : !canStartLocal}
         >
           <Play size={17} strokeWidth={2.6} />
-          Launch Session with {names.length} Players ↗
+          {gameMode === 'online'
+            ? onlineRoom
+              ? isHostingOnline
+                ? `Launch Online Mission (${onlinePlayers.length}/3 Min) ↗`
+                : 'Waiting for Host to Launch Mission…'
+              : 'Create or Join an Online Room Above ↗'
+            : `Launch Session with ${names.length} Players ↗`}
         </button>
       </section>
     </div>

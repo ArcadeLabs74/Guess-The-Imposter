@@ -6,11 +6,15 @@ import {
   Volume2,
   VolumeX,
   LogOut,
+  Radio,
 } from 'lucide-react';
-import type { GamePhase, Player, GameSettings, WordData, ClueItem, VoteResult } from './types/game';
-import { getWord, PLAYER_COLORS } from './data/presetWords';
+import type { GamePhase, Player, GameSettings, WordData, ClueItem, VoteResult, DbRoom, DbClue } from './types/game';
+import { PLAYER_COLORS } from './data/presetWords';
+import { generateAiWord } from './services/geminiService';
 import { initButtonFx } from './lib/animations';
 import { soundManager } from './services/soundService';
+import { multiplayerService } from './services/multiplayerService';
+import { getSessionId } from './services/supabaseClient';
 
 import { HomeScreen } from './components/HomeScreen';
 import { RoleRevealScreen } from './components/RoleRevealScreen';
@@ -44,6 +48,7 @@ export function App() {
     localStorage.setItem('imposter_muted', next ? '1' : '0');
   };
 
+  // Local & Common Game State
   const [players, setPlayers] = useState<Player[]>([]);
   const [settings, setSettings] = useState<GameSettings>(DEFAULT_SETTINGS);
   const [wordData, setWordData] = useState<WordData | null>(null);
@@ -59,87 +64,241 @@ export function App() {
   const [winner, setWinner] = useState<'crew' | 'imposter'>('crew');
   const [winReason, setWinReason] = useState('');
 
-  // --- Setup ---------------------------------------------------------------
+  // Online Multiplayer Supabase State
+  const [isOnline, setIsOnline] = useState(false);
+  const [onlineRoom, setOnlineRoom] = useState<DbRoom | null>(null);
+  const [myPlayer, setMyPlayer] = useState<Player | null>(null);
+  const sessionId = getSessionId();
 
-  const startGame = (names: string[], gameSettings: GameSettings) => {
-    const roster: Player[] = names.map((name, i) => ({
-      id: `p${i}`,
-      name,
-      color: PLAYER_COLORS[i % PLAYER_COLORS.length],
-      role: 'crew',
-      votedFor: null,
-    }));
+  // --- Realtime Supabase Room Subscription ---------------------------------
+  useEffect(() => {
+    if (!isOnline || !onlineRoom?.id) return;
 
-    const imposterIndices = new Set<number>();
-    const count = Math.min(gameSettings.imposterCount, roster.length - 2);
-    while (imposterIndices.size < count) {
-      imposterIndices.add(Math.floor(Math.random() * roster.length));
-    }
-    roster.forEach((p, i) => {
-      if (imposterIndices.has(i)) p.role = 'imposter';
+    const unsubscribe = multiplayerService.subscribeToRoom(onlineRoom.id, {
+      onRoomChange: async (updatedRoom) => {
+        setOnlineRoom(updatedRoom);
+        setSettings({
+          imposterCount: updatedRoom.imposter_count,
+          roundCount: updatedRoom.round_count,
+          category: updatedRoom.category,
+        });
+        setCurrentRound(updatedRoom.current_round);
+        setCurrentTurnIndex(updatedRoom.current_turn_index);
+
+        // Synchronize phase transitions across all devices
+        if (updatedRoom.phase !== phase) {
+          setPhase(updatedRoom.phase);
+
+          if (updatedRoom.phase === 'reveal') {
+            soundManager.playCardFlip();
+            try {
+              const privateCard = await multiplayerService.getPlayerPrivateCard(updatedRoom.id);
+              setWordData(privateCard);
+              setMyPlayer((prev) => (prev ? { ...prev, role: privateCard.role } : null));
+            } catch (e) {
+              console.error('Failed to load private card:', e);
+            }
+          } else if (updatedRoom.phase === 'clue') {
+            // Clue phase starts
+          } else if (updatedRoom.phase === 'vote') {
+            soundManager.playEmergency();
+          } else if (updatedRoom.phase === 'results') {
+            // Build vote result from current players
+            const updatedPlayers = await multiplayerService.getPlayers(updatedRoom.id);
+            setPlayers(updatedPlayers);
+            setWinner(updatedRoom.winner || 'crew');
+            setWinReason(updatedRoom.win_reason || '');
+
+            const counts: Record<string, number> = {};
+            let skipped = 0;
+            updatedPlayers.forEach((p) => {
+              if (!p.votedFor || p.votedFor === 'skip') skipped++;
+              else counts[p.votedFor] = (counts[p.votedFor] || 0) + 1;
+            });
+
+            let top = 0;
+            let ejectedId: string | null = null;
+            let isTie = false;
+            Object.entries(counts).forEach(([id, n]) => {
+              if (n > top) {
+                top = n;
+                ejectedId = id;
+                isTie = false;
+              } else if (n === top) {
+                isTie = true;
+              }
+            });
+
+            const ejected = updatedPlayers.find((p) => p.id === ejectedId);
+            setVoteResult({
+              ejectedPlayerId: ejectedId,
+              ejectedPlayerName: ejected?.name || null,
+              ejectedRole: ejected?.role || null,
+              isTie,
+              voteCounts: counts,
+              skippedCount: skipped,
+            });
+          }
+        }
+      },
+      onPlayersChange: (updatedPlayers) => {
+        setPlayers(updatedPlayers);
+        const me = updatedPlayers.find((p) => p.sessionId === sessionId) || null;
+        if (me) setMyPlayer(me);
+      },
+      onCluesChange: (updatedClues: DbClue[]) => {
+        setClues(
+          updatedClues.map((c) => ({
+            id: c.id,
+            playerId: c.player_id,
+            playerName: c.player_name,
+            playerColor: c.player_color,
+            round: c.round_number,
+            text: c.clue_text,
+          }))
+        );
+      },
     });
 
-    setPlayers(roster);
+    return () => {
+      unsubscribe();
+    };
+  }, [isOnline, onlineRoom?.id, phase, sessionId]);
+
+  // --- Online Multiplayer Actions ------------------------------------------
+
+  const handleHostOnline = async (hostName: string, hostColor: string, gameSettings: GameSettings) => {
+    const { room, player } = await multiplayerService.createRoom(hostName, hostColor, gameSettings);
+    setIsOnline(true);
+    setOnlineRoom(room);
+    const hostP: Player = {
+      id: player.id,
+      name: player.name,
+      color: player.color,
+      role: player.role,
+      votedFor: null,
+      isHost: true,
+      sessionId,
+    };
+    setMyPlayer(hostP);
+    setPlayers([hostP]);
     setSettings(gameSettings);
-    setWordData(getWord(gameSettings.category));
-    setRevealIndex(0);
-    setVotes({});
-    setPhase('reveal');
+    setPhase('home');
   };
 
-  // --- Clue phase ----------------------------------------------------------
+  const handleJoinOnline = async (code: string, playerName: string, playerColor: string) => {
+    const { room, player } = await multiplayerService.joinRoom(code, playerName, playerColor);
+    setIsOnline(true);
+    setOnlineRoom(room);
+    const joinedP: Player = {
+      id: player.id,
+      name: player.name,
+      color: player.color,
+      role: player.role,
+      votedFor: null,
+      isHost: player.is_host,
+      sessionId,
+    };
+    setMyPlayer(joinedP);
+    const allPlayers = await multiplayerService.getPlayers(room.id);
+    setPlayers(allPlayers);
+    setSettings({
+      imposterCount: room.imposter_count,
+      roundCount: room.round_count,
+      category: room.category,
+    });
+    setPhase('home');
+  };
 
-  const handleConfirmRole = () => {
-    if (revealIndex < players.length - 1) {
-      setRevealIndex(revealIndex + 1);
+  const handleStartOnline = async () => {
+    if (!onlineRoom) return;
+    await multiplayerService.startGame(onlineRoom.id, settings);
+  };
+
+  const handleConfirmRole = async () => {
+    if (isOnline) {
+      if (onlineRoom && myPlayer?.isHost) {
+        await multiplayerService.advanceToCluePhase(onlineRoom.id);
+      }
     } else {
-      setClues([]);
-      setCurrentRound(1);
-      setCurrentTurnIndex(0);
-      setPhase('clue');
+      if (revealIndex < players.length - 1) {
+        setRevealIndex(revealIndex + 1);
+      } else {
+        setClues([]);
+        setCurrentRound(1);
+        setCurrentTurnIndex(0);
+        setPhase('clue');
+      }
     }
   };
 
-  const handleAddClue = (text: string) => {
-    const activePlayer = players[currentTurnIndex];
-    const newClue: ClueItem = {
-      id: `clue_${Date.now()}`,
-      playerId: activePlayer.id,
-      playerName: activePlayer.name,
-      playerColor: activePlayer.color,
-      round: currentRound,
-      text,
-    };
-    const nextClues = [...clues, newClue];
-    setClues(nextClues);
+  const handleAddClue = async (text: string) => {
+    if (isOnline && onlineRoom && myPlayer) {
+      const activePlayer = players[currentTurnIndex] || myPlayer;
+      await multiplayerService.submitClue(
+        onlineRoom.id,
+        activePlayer.id,
+        activePlayer.name,
+        activePlayer.color,
+        currentRound,
+        settings.roundCount,
+        currentTurnIndex,
+        players.length,
+        text
+      );
+    } else {
+      // Local Pass & Play
+      const activePlayer = players[currentTurnIndex];
+      const newClue: ClueItem = {
+        id: `clue_${Date.now()}`,
+        playerId: activePlayer.id,
+        playerName: activePlayer.name,
+        playerColor: activePlayer.color,
+        round: currentRound,
+        text,
+      };
+      setClues([...clues, newClue]);
 
-    const nextTurn = currentTurnIndex + 1;
-    if (nextTurn < players.length) {
-      setCurrentTurnIndex(nextTurn);
-    } else if (currentRound < settings.roundCount) {
-      setCurrentRound(currentRound + 1);
-      setCurrentTurnIndex(0);
+      const nextTurn = currentTurnIndex + 1;
+      if (nextTurn < players.length) {
+        setCurrentTurnIndex(nextTurn);
+      } else if (currentRound < settings.roundCount) {
+        setCurrentRound(currentRound + 1);
+        setCurrentTurnIndex(0);
+      } else {
+        setVoterIndex(0);
+        setPhase('vote');
+      }
+    }
+  };
+
+  const handleCallVote = async () => {
+    if (isOnline && onlineRoom) {
+      await multiplayerService.callEmergencyVote(onlineRoom.id);
     } else {
       setVoterIndex(0);
       setPhase('vote');
     }
   };
 
-  // --- Voting --------------------------------------------------------------
-
-  const handleCastVote = (targetId: string | 'skip') => {
-    const voter = players[voterIndex];
-    const updatedVotes = { ...votes, [voter.id]: targetId };
-    setVotes(updatedVotes);
-
-    if (voterIndex < players.length - 1) {
-      setVoterIndex(voterIndex + 1);
+  const handleCastVote = async (targetId: string | 'skip') => {
+    if (isOnline && onlineRoom && myPlayer) {
+      await multiplayerService.castVote(onlineRoom.id, myPlayer.id, targetId);
     } else {
-      tallyAndFinish(updatedVotes);
+      // Local Pass & Play
+      const voter = players[voterIndex];
+      const updatedVotes = { ...votes, [voter.id]: targetId };
+      setVotes(updatedVotes);
+
+      if (voterIndex < players.length - 1) {
+        setVoterIndex(voterIndex + 1);
+      } else {
+        tallyAndFinishLocal(updatedVotes);
+      }
     }
   };
 
-  const tallyAndFinish = (allVotes: Record<string, string | 'skip'>) => {
+  const tallyAndFinishLocal = (allVotes: Record<string, string | 'skip'>) => {
     const counts: Record<string, number> = {};
     let skipped = 0;
 
@@ -202,52 +361,122 @@ export function App() {
     setPhase('results');
   };
 
-  // --- Post-game -----------------------------------------------------------
-
-  const handleRematch = () => {
-    const reshuffled: Player[] = players.map((p) => ({
-      ...p,
-      role: 'crew',
-      votedFor: null,
-    }));
-    const imposterIndices = new Set<number>();
-    const count = Math.min(settings.imposterCount, reshuffled.length - 2);
-    while (imposterIndices.size < count) {
-      imposterIndices.add(Math.floor(Math.random() * reshuffled.length));
+  const handleRematch = async () => {
+    if (isOnline && onlineRoom) {
+      await multiplayerService.rematch(onlineRoom.id, settings);
+    } else {
+      const reshuffled: Player[] = players.map((p) => ({
+        ...p,
+        role: 'crew',
+        votedFor: null,
+      }));
+      const imposterIndices = new Set<number>();
+      const count = Math.min(settings.imposterCount, reshuffled.length - 2);
+      while (imposterIndices.size < count) {
+        imposterIndices.add(Math.floor(Math.random() * reshuffled.length));
+      }
+      reshuffled.forEach((p, i) => {
+        if (imposterIndices.has(i)) p.role = 'imposter';
+      });
+      setPlayers(reshuffled);
+      const newWord = await generateAiWord(settings.category);
+      setWordData(newWord);
+      setClues([]);
+      setVoteResult(null);
+      setVotes({});
+      setRevealIndex(0);
+      setCurrentRound(1);
+      setCurrentTurnIndex(0);
+      setPhase('reveal');
     }
-    reshuffled.forEach((p, i) => {
-      if (imposterIndices.has(i)) p.role = 'imposter';
-    });
-    setPlayers(reshuffled);
-    setWordData(getWord(settings.category));
-    setClues([]);
-    setVoteResult(null);
-    setVotes({});
-    setRevealIndex(0);
-    setCurrentRound(1);
-    setCurrentTurnIndex(0);
-    setPhase('reveal');
   };
 
   const handleReturnHome = () => {
     if (phase !== 'home' && !window.confirm('Leave current session and return to home?')) return;
     setPhase('home');
-    setPlayers([]);
-    setClues([]);
-    setVoteResult(null);
+    if (!isOnline) {
+      setPlayers([]);
+      setClues([]);
+      setVoteResult(null);
+      setVotes({});
+    }
+  };
+
+  const handleLeaveOnlineRoom = () => {
+    if (window.confirm('Leave online multiplayer room?')) {
+      setIsOnline(false);
+      setOnlineRoom(null);
+      setMyPlayer(null);
+      setPlayers([]);
+      setClues([]);
+      setVoteResult(null);
+      setPhase('home');
+    }
+  };
+
+  // --- Local Pass & Play Setup ---------------------------------------------
+  const startLocalGame = async (names: string[], gameSettings: GameSettings) => {
+    setIsOnline(false);
+    setOnlineRoom(null);
+    setMyPlayer(null);
+
+    const roster: Player[] = names.map((name, i) => ({
+      id: `p${i}`,
+      name,
+      color: PLAYER_COLORS[i % PLAYER_COLORS.length],
+      role: 'crew',
+      votedFor: null,
+    }));
+
+    const imposterIndices = new Set<number>();
+    const count = Math.min(gameSettings.imposterCount, roster.length - 2);
+    while (imposterIndices.size < count) {
+      imposterIndices.add(Math.floor(Math.random() * roster.length));
+    }
+    roster.forEach((p, i) => {
+      if (imposterIndices.has(i)) p.role = 'imposter';
+    });
+
+    setPlayers(roster);
+    setSettings(gameSettings);
+    const newWord = await generateAiWord(gameSettings.category);
+    setWordData(newWord);
+    setRevealIndex(0);
     setVotes({});
+    setPhase('reveal');
+  };
+
+  const handleHostReturnToLobby = async () => {
+    if (isOnline && onlineRoom) {
+      await multiplayerService.returnToLobby(onlineRoom.id);
+    }
+  };
+
+  const handleHostForceTally = async () => {
+    if (isOnline && onlineRoom) {
+      await multiplayerService.forceTallyCurrentVotes(onlineRoom.id);
+    }
   };
 
   return (
     <div className="app-shell">
-      {/* Clean Top Navigation Bar */}
+      {/* Top Navigation Bar */}
       <header className="app-top-nav">
         <div className="nav-brand">
           <span className="status-dot-live" />
-          <span className="nav-brand-text">GTI // SOCIAL DEDUCTION</span>
+          <span className="nav-brand-text">
+            {isOnline && onlineRoom ? `GTI // ${onlineRoom.code}` : 'GTI // SOCIAL DEDUCTION'}
+          </span>
         </div>
 
         <div className="nav-actions">
+          {isOnline && onlineRoom && (
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 10px', background: 'var(--accent-dim)', color: 'var(--accent-strong)', borderRadius: '999px', fontSize: 11, fontFamily: 'var(--font-mono)', fontWeight: 700 }}>
+              <Radio size={12} className="status-dot-live" />
+              ONLINE LOBBY
+            </span>
+          )}
+
           <button
             className={`nav-icon-btn ${phase === 'home' ? 'active' : ''}`}
             onClick={handleReturnHome}
@@ -288,16 +517,29 @@ export function App() {
       {/* Main Screen Content */}
       <main className="main-content">
         {phase === 'home' && (
-          <HomeScreen onStartGame={startGame} onOpenRules={() => setShowRules(true)} />
+          <HomeScreen
+            onStartLocalGame={startLocalGame}
+            onOpenRules={() => setShowRules(true)}
+            onlineRoom={onlineRoom}
+            onlinePlayers={players}
+            isHostingOnline={myPlayer?.isHost ?? false}
+            onHostOnlineRoom={handleHostOnline}
+            onJoinOnlineRoom={handleJoinOnline}
+            onStartOnlineGame={handleStartOnline}
+            onLeaveOnlineRoom={handleLeaveOnlineRoom}
+          />
         )}
 
         {phase === 'reveal' && wordData && (
           <RoleRevealScreen
-            key={revealIndex}
+            key={isOnline ? (myPlayer?.id || 'online') : revealIndex}
             players={players}
             wordData={wordData}
             revealIndex={revealIndex}
             onConfirm={handleConfirmRole}
+            isOnlineMode={isOnline}
+            myPlayer={myPlayer}
+            isHost={myPlayer?.isHost ?? false}
           />
         )}
 
@@ -310,19 +552,25 @@ export function App() {
             totalRounds={settings.roundCount}
             currentTurnIndex={currentTurnIndex}
             onSubmitClue={handleAddClue}
-            onCallVote={() => {
-              setVoterIndex(0);
-              setPhase('vote');
-            }}
+            onCallVote={handleCallVote}
+            isOnlineMode={isOnline}
+            myPlayerId={myPlayer?.id}
+            myPlayer={myPlayer}
+            isHost={myPlayer?.isHost ?? false}
           />
         )}
 
         {phase === 'vote' && wordData && (
           <VoteScreen
-            key={voterIndex}
+            key={isOnline ? (myPlayer?.id || 'online_vote') : voterIndex}
             players={players}
             voterIndex={voterIndex}
             onCastVote={handleCastVote}
+            isOnlineMode={isOnline}
+            myPlayer={myPlayer}
+            isHost={myPlayer?.isHost ?? false}
+            onHostReturnToLobby={handleHostReturnToLobby}
+            onHostForceTally={handleHostForceTally}
           />
         )}
 
@@ -341,7 +589,9 @@ export function App() {
 
       {/* Minimalist Footer */}
       <footer className="app-footer">
-        GUESS THE IMPOSTER · PASS & PLAY DEDUCTION · 1 DEVICE LOCAL
+        {isOnline
+          ? `GUESS THE IMPOSTER · ONLINE MULTIPLAYER (ROOM: ${onlineRoom?.code || 'CONNECTED'})`
+          : 'GUESS THE IMPOSTER · PASS & PLAY DEDUCTION · 1 DEVICE LOCAL'}
       </footer>
 
       {showRules && <HowToPlayModal onClose={() => setShowRules(false)} />}

@@ -9,10 +9,21 @@ interface RoleRevealScreenProps {
   wordData: WordData;
   revealIndex: number;
   onConfirm: () => void;
+  isOnlineMode?: boolean;
+  myPlayer?: Player | null;
+  isHost?: boolean;
 }
 
-export function RoleRevealScreen({ players, wordData, revealIndex, onConfirm }: RoleRevealScreenProps) {
-  const player = players[revealIndex];
+export function RoleRevealScreen({
+  players,
+  wordData,
+  revealIndex,
+  onConfirm,
+  isOnlineMode = false,
+  myPlayer,
+  isHost = false,
+}: RoleRevealScreenProps) {
+  const activePlayer = isOnlineMode ? (myPlayer || players[0]) : players[revealIndex];
   const [revealed, setRevealed] = useState(false);
   const flipRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
@@ -35,25 +46,27 @@ export function RoleRevealScreen({ players, wordData, revealIndex, onConfirm }: 
     }, 620);
   };
 
-  const isLast = revealIndex === players.length - 1;
+  const isLast = isOnlineMode ? true : revealIndex === players.length - 1;
 
   return (
     <div className="screen screen-narrow">
       <div className="pass-banner">
         <span className="chip-label">
-          CONFIDENTIAL ROLE {revealIndex + 1} OF {players.length} · PASS DEVICE TO
+          {isOnlineMode
+            ? 'ONLINE CONFIDENTIAL IDENTITY'
+            : `CONFIDENTIAL ROLE ${revealIndex + 1} OF ${players.length} · PASS DEVICE TO`}
         </span>
         <strong style={{ fontFamily: 'var(--font-display)', fontSize: 17, color: 'var(--ink)' }}>
-          {player.name}
+          {activePlayer.name}
         </strong>
       </div>
 
       <div className="card panel-pad pass-card" ref={stageRef}>
         <span
           className="reveal-avatar"
-          style={{ background: `linear-gradient(135deg, ${player.color}, ${player.color}cc)` }}
+          style={{ background: `linear-gradient(135deg, ${activePlayer.color}, ${activePlayer.color}cc)` }}
         >
-          {player.name.charAt(0).toUpperCase()}
+          {activePlayer.name.charAt(0).toUpperCase()}
         </span>
 
         {!revealed ? (
@@ -62,7 +75,7 @@ export function RoleRevealScreen({ players, wordData, revealIndex, onConfirm }: 
               IDENTITY VERIFICATION
             </h2>
             <p style={{ color: 'var(--text-secondary)', marginTop: 6, maxWidth: 420, marginInline: 'auto', fontSize: 14 }}>
-              Ensure only <strong>{player.name}</strong> can see the display. Tap the security capsule to reveal your role.
+              Ensure your screen is private. Tap the security capsule to decrypt your classified role.
             </p>
           </>
         ) : (
@@ -71,7 +84,7 @@ export function RoleRevealScreen({ players, wordData, revealIndex, onConfirm }: 
               ROLE ACKNOWLEDGED
             </h2>
             <p style={{ color: 'var(--text-secondary)', maxWidth: 420, marginInline: 'auto', fontSize: 13.5 }}>
-              Memorize your objective, then pass the device to the next operative.
+              Memorize your objective, then proceed to the clue discussion when ready.
             </p>
           </>
         )}
@@ -96,7 +109,7 @@ export function RoleRevealScreen({ players, wordData, revealIndex, onConfirm }: 
               )}
             </div>
             <div className="flip-face back">
-              {player.role === 'imposter' ? (
+              {activePlayer.role === 'imposter' ? (
                 <>
                   <span className="flip-role-banner imposter">
                     <Eye size={15} />
@@ -127,7 +140,13 @@ export function RoleRevealScreen({ players, wordData, revealIndex, onConfirm }: 
 
         {revealed && (
           <button className="btn btn-primary btn-lg" style={{ marginTop: 24 }} onClick={onConfirm}>
-            {isLast ? 'BEGIN CLUE TRANSMISSION' : `PASS TO ${players[revealIndex + 1].name}`}
+            {isOnlineMode
+              ? isHost
+                ? 'START CLUE TRANSMISSION FOR ALL ↗'
+                : 'READY FOR CLUE TRANSMISSION ↗'
+              : isLast
+              ? 'BEGIN CLUE TRANSMISSION ↗'
+              : `PASS TO ${players[revealIndex + 1].name} ↗`}
             <ArrowRight size={17} />
           </button>
         )}
