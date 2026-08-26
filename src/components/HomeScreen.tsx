@@ -17,11 +17,13 @@ import {
   UserPlus,
   LogIn,
   Loader2,
+  SlidersHorizontal,
 } from 'lucide-react';
 import type { GameSettings, Player, DbRoom } from '../types/game';
 import { CATEGORY_OPTIONS, PLAYER_COLORS } from '../data/presetWords';
 import { animateHeroTitle, animateScreenIn, popIn } from '../lib/animations';
 import { soundManager } from '../services/soundService';
+import { CategoryModal } from './CategoryModal';
 
 interface HomeScreenProps {
   onStartLocalGame: (names: string[], settings: GameSettings) => void;
@@ -38,6 +40,19 @@ interface HomeScreenProps {
 
 const MIN_PLAYERS = 3;
 const MAX_PLAYERS = 12;
+
+const INITIAL_SELECTED_CATEGORIES = [
+  'random',
+  'food',
+  'movies',
+  'places',
+  'animals',
+  'gaming',
+  'sports',
+  'everyday',
+  'professions',
+  'superheroes',
+];
 
 export function HomeScreen({
   onStartLocalGame,
@@ -65,6 +80,9 @@ export function HomeScreen({
   const [onlineError, setOnlineError] = useState<string | null>(null);
 
   const [names, setNames] = useState(['', '', '', '']);
+  const [selectedCategoryIds, setSelectedCategoryIds] = useState<string[]>(INITIAL_SELECTED_CATEGORIES);
+  const [showCategoryModal, setShowCategoryModal] = useState(false);
+
   const [settings, setSettings] = useState<GameSettings>({
     imposterCount: 1,
     roundCount: 2,
@@ -714,23 +732,65 @@ export function HomeScreen({
         <hr className="divider" />
 
         <div>
-          <div className="section-label" style={{ marginBottom: 12 }}>
-            <Layers size={13} />
-            Word Deck Selection
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
+            <div>
+              <div className="section-label" style={{ marginBottom: 2 }}>
+                <Layers size={13} />
+                Word Deck Selection
+              </div>
+              <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
+                Active: <strong style={{ color: 'var(--ink)' }}>{CATEGORY_OPTIONS.find((c) => c.id === settings.category)?.name || 'Random Mix'}</strong> · {CATEGORY_OPTIONS.find((c) => c.id === settings.category)?.description}
+              </div>
+            </div>
+
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm"
+              style={{ height: 34, padding: '0 14px', fontSize: 11 }}
+              onClick={() => {
+                soundManager.playClick();
+                setShowCategoryModal(true);
+              }}
+            >
+              <SlidersHorizontal size={13} />
+              Filter Decks ({selectedCategoryIds.length}) ↗
+            </button>
           </div>
+
           <div className="category-grid">
-            {CATEGORY_OPTIONS.map((cat) => (
+            {CATEGORY_OPTIONS.filter((c) => selectedCategoryIds.includes(c.id))
+              .slice(0, 10)
+              .map((cat) => (
+                <button
+                  key={cat.id}
+                  type="button"
+                  className={`category-chip ${settings.category === cat.id ? 'active' : ''}`}
+                  onClick={() => {
+                    soundManager.playClick();
+                    setSettings({ ...settings, category: cat.id });
+                  }}
+                  title={cat.description}
+                >
+                  <span className="cat-name">{cat.name}</span>
+                </button>
+              ))}
+
+            {selectedCategoryIds.length > 10 && (
               <button
-                key={cat.id}
-                className={`category-chip ${settings.category === cat.id ? 'active' : ''}`}
+                type="button"
+                className="category-chip"
+                style={{ borderStyle: 'dashed', background: 'var(--surface-2)' }}
                 onClick={() => {
                   soundManager.playClick();
-                  setSettings({ ...settings, category: cat.id });
+                  setShowCategoryModal(true);
                 }}
+                title="Open modal to view and customize all category decks"
               >
-                <span className="cat-name">{cat.name}</span>
+                <span className="cat-name" style={{ color: 'var(--accent-strong)' }}>
+                  +{selectedCategoryIds.length - 10} More…
+                </span>
               </button>
-            ))}
+            )}
           </div>
         </div>
 
@@ -751,6 +811,19 @@ export function HomeScreen({
             : `Launch Session with ${names.length} Players ↗`}
         </button>
       </section>
+
+      {/* Category Selection & Filter Popup Modal */}
+      {showCategoryModal && (
+        <CategoryModal
+          selectedIds={selectedCategoryIds}
+          activeCategoryId={settings.category}
+          onSaveSelection={(newIds, newActive) => {
+            setSelectedCategoryIds(newIds);
+            setSettings({ ...settings, category: newActive });
+          }}
+          onClose={() => setShowCategoryModal(false)}
+        />
+      )}
     </div>
   );
 }
