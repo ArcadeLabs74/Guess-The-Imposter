@@ -18,7 +18,9 @@ import {
   LogIn,
   Loader2,
   SlidersHorizontal,
+  KeyRound,
 } from 'lucide-react';
+import type { User } from '@supabase/supabase-js';
 import type { GameSettings, Player, DbRoom } from '../types/game';
 import { CATEGORY_OPTIONS, PLAYER_COLORS } from '../data/presetWords';
 import { animateHeroTitle, animateScreenIn, popIn } from '../lib/animations';
@@ -28,6 +30,9 @@ import { CategoryModal } from './CategoryModal';
 interface HomeScreenProps {
   onStartLocalGame: (names: string[], settings: GameSettings) => void;
   onOpenRules: () => void;
+  // Supabase Auth Props
+  authUser?: User | null;
+  onRequireAuth?: () => void;
   // Supabase Online Props
   onlineRoom?: DbRoom | null;
   onlinePlayers?: Player[];
@@ -57,6 +62,8 @@ const INITIAL_SELECTED_CATEGORIES = [
 export function HomeScreen({
   onStartLocalGame,
   onOpenRules,
+  authUser,
+  onRequireAuth,
   onlineRoom,
   onlinePlayers = [],
   isHostingOnline = false,
@@ -74,10 +81,22 @@ export function HomeScreen({
   const [copiedLink, setCopiedLink] = useState(false);
   const [invitedFriends, setInvitedFriends] = useState(false);
   const [joinCode, setJoinCode] = useState('');
-  const [joinName, setJoinName] = useState('Agent Phoenix');
-  const [hostName, setHostName] = useState('Host Operative');
+
+  const defaultAlias = authUser?.user_metadata?.display_name || (authUser?.email ? authUser.email.split('@')[0] : 'Agent Phoenix');
+  const [joinName, setJoinName] = useState(defaultAlias);
+  const [hostName, setHostName] = useState(defaultAlias || 'Host Operative');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [onlineError, setOnlineError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (authUser) {
+      const alias = authUser.user_metadata?.display_name || authUser.email?.split('@')[0];
+      if (alias) {
+        setHostName(alias);
+        setJoinName(alias);
+      }
+    }
+  }, [authUser]);
 
   const [names, setNames] = useState(['', '', '', '']);
   const [selectedCategoryIds, setSelectedCategoryIds] = useState<string[]>(INITIAL_SELECTED_CATEGORIES);
@@ -134,6 +153,10 @@ export function HomeScreen({
   };
 
   const handleCreateOnline = async () => {
+    if (!authUser) {
+      if (onRequireAuth) onRequireAuth();
+      return;
+    }
     if (!onHostOnlineRoom) return;
     setOnlineError(null);
     setIsSubmitting(true);
@@ -149,6 +172,10 @@ export function HomeScreen({
   };
 
   const handleJoinOnline = async () => {
+    if (!authUser) {
+      if (onRequireAuth) onRequireAuth();
+      return;
+    }
     if (!onJoinOnlineRoom || !joinCode.trim()) return;
     setOnlineError(null);
     setIsSubmitting(true);
@@ -446,6 +473,27 @@ export function HomeScreen({
                   ))}
                 </div>
               </>
+            ) : !authUser ? (
+              /* Auth Required Gate for Online Multiplayer */
+              <div style={{ background: 'var(--bg-elevated)', padding: '28px 20px', borderRadius: 'var(--radius-lg)', border: '1px dashed var(--accent-strong)', textAlign: 'center' }}>
+                <div style={{ width: 44, height: 44, borderRadius: '50%', background: 'var(--accent-dim)', display: 'grid', placeItems: 'center', margin: '0 auto 12px', border: '1px solid var(--accent-strong)' }}>
+                  <KeyRound size={20} color="var(--accent-strong)" />
+                </div>
+                <h4 style={{ fontFamily: 'var(--font-display)', fontSize: 20, textTransform: 'uppercase', color: 'var(--ink)', marginBottom: 6 }}>
+                  AUTHENTICATION CLEARANCE REQUIRED
+                </h4>
+                <p style={{ color: 'var(--text-secondary)', fontSize: 13, maxWidth: 440, margin: '0 auto 18px', lineHeight: 1.45 }}>
+                  Sign in or create an account with Email or Google to create rooms, invite friends, and access real-time online multiplayer missions.
+                </p>
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  style={{ minWidth: 200 }}
+                  onClick={() => onRequireAuth?.()}
+                >
+                  <LogIn size={15} /> SIGN IN / CREATE ACCOUNT ↗
+                </button>
+              </div>
             ) : (
               /* Online Tab Switcher: Host vs Join */
               <>

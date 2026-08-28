@@ -10,10 +10,18 @@ export const isSupabaseConfigured = Boolean(
   !supabaseAnonKey.includes('placeholder')
 );
 
-// Fallback dummy client if keys are not present yet to avoid runtime crashes
+// Supabase client with persistent session in browser storage
 export const supabase: SupabaseClient = createClient(
   supabaseUrl || 'https://placeholder.supabase.co',
-  supabaseAnonKey || 'placeholder'
+  supabaseAnonKey || 'placeholder',
+  {
+    auth: {
+      persistSession: true,
+      autoRefreshToken: true,
+      detectSessionInUrl: true,
+      storageKey: 'gti_auth_token',
+    },
+  }
 );
 
 /**

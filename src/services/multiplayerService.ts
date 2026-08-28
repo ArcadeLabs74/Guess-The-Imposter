@@ -28,6 +28,8 @@ class MultiplayerService {
   ): Promise<{ room: DbRoom; player: DbPlayer }> {
     const sessionId = getSessionId();
     const code = this.generateRoomCode();
+    const { data: authData } = await supabase.auth.getUser();
+    const userId = authData?.user?.id || null;
 
     // 1. Insert Room
     const { data: roomData, error: roomError } = await supabase
@@ -35,6 +37,7 @@ class MultiplayerService {
       .insert({
         code,
         host_id: sessionId,
+        host_user_id: userId,
         phase: 'home',
         imposter_count: settings.imposterCount,
         round_count: settings.roundCount,
@@ -55,6 +58,7 @@ class MultiplayerService {
       .insert({
         room_id: roomData.id,
         session_id: sessionId,
+        user_id: userId,
         name: hostName.trim() || 'Host Operative',
         color: hostColor,
         is_host: true,
@@ -81,6 +85,8 @@ class MultiplayerService {
   ): Promise<{ room: DbRoom; player: DbPlayer }> {
     const sessionId = getSessionId();
     const cleanCode = code.trim().toUpperCase();
+    const { data: authData } = await supabase.auth.getUser();
+    const userId = authData?.user?.id || null;
 
     // 1. Find Room
     const { data: roomData, error: roomError } = await supabase
@@ -108,6 +114,7 @@ class MultiplayerService {
         .update({
           name: playerName.trim() || existingPlayer.name,
           color: playerColor || existingPlayer.color,
+          user_id: userId || existingPlayer.user_id,
         })
         .eq('id', existingPlayer.id)
         .select()
@@ -122,6 +129,7 @@ class MultiplayerService {
       .insert({
         room_id: roomData.id,
         session_id: sessionId,
+        user_id: userId,
         name: playerName.trim() || 'Agent Guest',
         color: playerColor,
         is_host: false,
@@ -184,15 +192,15 @@ class MultiplayerService {
       p_session_id: sessionId,
     });
 
-    if (error || !data) {
-      throw new Error(error?.message || 'Unable to decrypt classified role card.');
+    if (error || !data || data.error) {
+      throw new Error(data?.error || error?.message || 'Unable to decrypt classified role card.');
     }
 
     return {
       category: data.category || 'General',
       secretWord: data.secretWord || 'CLASSIFIED',
       imposterHint: data.imposterHint || '',
-      role: data.role,
+      role: data.role || 'crew',
     };
   }
 

@@ -10,6 +10,7 @@ export interface Player {
   votedFor: string | null; // player id or 'skip'
   isHost?: boolean;
   sessionId?: string;
+  userId?: string | null;
 }
 
 export interface GameSettings {
@@ -47,6 +48,7 @@ export interface DbRoom {
   id: string;
   code: string;
   host_id: string;
+  host_user_id?: string | null;
   phase: GamePhase;
   imposter_count: number;
   round_count: number;
@@ -65,6 +67,7 @@ export interface DbPlayer {
   id: string;
   room_id: string;
   session_id: string;
+  user_id?: string | null;
   name: string;
   color: string;
   is_host: boolean;

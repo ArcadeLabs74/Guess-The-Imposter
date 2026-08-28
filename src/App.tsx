@@ -7,7 +7,10 @@ import {
   VolumeX,
   LogOut,
   Radio,
+  User as UserIcon,
+  LogIn,
 } from 'lucide-react';
+import type { User } from '@supabase/supabase-js';
 import type { GamePhase, Player, GameSettings, WordData, ClueItem, VoteResult, DbRoom, DbClue } from './types/game';
 import { PLAYER_COLORS } from './data/presetWords';
 import { generateAiWord } from './services/geminiService';
@@ -15,6 +18,7 @@ import { initButtonFx } from './lib/animations';
 import { soundManager } from './services/soundService';
 import { multiplayerService } from './services/multiplayerService';
 import { getSessionId } from './services/supabaseClient';
+import { authService } from './services/authService';
 
 import { HomeScreen } from './components/HomeScreen';
 import { RoleRevealScreen } from './components/RoleRevealScreen';
@@ -22,6 +26,7 @@ import { ClueScreen } from './components/ClueScreen';
 import { VoteScreen } from './components/VoteScreen';
 import { ResultsScreen } from './components/ResultsScreen';
 import { HowToPlayModal } from './components/HowToPlayModal';
+import { AuthModal } from './components/AuthModal';
 
 const DEFAULT_SETTINGS: GameSettings = {
   imposterCount: 1,
@@ -32,6 +37,10 @@ const DEFAULT_SETTINGS: GameSettings = {
 export function App() {
   const [phase, setPhase] = useState<GamePhase>('home');
   const [showRules, setShowRules] = useState(false);
+  const [authUser, setAuthUser] = useState<User | null>(null);
+  const [showAuthModal, setShowAuthModal] = useState(false);
+  const [authRequiredForOnline, setAuthRequiredForOnline] = useState(false);
+
   const [muted, setMuted] = useState(() => {
     const saved = localStorage.getItem('imposter_muted') === '1';
     soundManager.setMuted(saved);
@@ -40,6 +49,15 @@ export function App() {
 
   useEffect(() => {
     initButtonFx();
+
+    authService.getCurrentUser().then((user) => setAuthUser(user));
+    const unsubscribe = authService.onAuthStateChange((user) => {
+      setAuthUser(user);
+    });
+
+    return () => {
+      unsubscribe();
+    };
   }, []);
 
   const toggleMute = () => {
@@ -470,6 +488,62 @@ export function App() {
         </div>
 
         <div className="nav-actions">
+          {/* Operative Account Dossier / Sign In Button */}
+          {authUser ? (
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+              <span
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  height: 32,
+                  padding: '0 10px',
+                  background: 'var(--bg-elevated)',
+                  border: '1px solid var(--border-strong)',
+                  borderRadius: 'var(--radius-md)',
+                  color: 'var(--ink)',
+                  fontSize: 11,
+                  fontFamily: 'var(--font-mono)',
+                  fontWeight: 600,
+                  maxWidth: 160,
+                }}
+                title={`Signed in as ${authUser.email}`}
+              >
+                <UserIcon size={12} color="var(--accent-strong)" style={{ flexShrink: 0 }} />
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {authUser.user_metadata?.display_name || authUser.email?.split('@')[0]}
+                </span>
+              </span>
+
+              <button
+                className="nav-icon-btn"
+                style={{ width: 32, height: 32 }}
+                onClick={() => {
+                  soundManager.playClick();
+                  authService.signOut();
+                }}
+                aria-label="Sign Out"
+                title="Sign out of operative dossier"
+              >
+                <LogOut size={14} />
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm"
+              style={{ height: 32, padding: '0 12px', fontSize: 11, gap: 5 }}
+              onClick={() => {
+                soundManager.playClick();
+                setAuthRequiredForOnline(false);
+                setShowAuthModal(true);
+              }}
+            >
+              <LogIn size={13} />
+              <span>SIGN IN</span>
+            </button>
+          )}
+
           {isOnline && onlineRoom && (
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 10px', background: 'var(--accent-dim)', color: 'var(--accent-strong)', borderRadius: '999px', fontSize: 11, fontFamily: 'var(--font-mono)', fontWeight: 700 }}>
               <Radio size={12} className="status-dot-live" />
@@ -520,6 +594,11 @@ export function App() {
           <HomeScreen
             onStartLocalGame={startLocalGame}
             onOpenRules={() => setShowRules(true)}
+            authUser={authUser}
+            onRequireAuth={() => {
+              setAuthRequiredForOnline(true);
+              setShowAuthModal(true);
+            }}
             onlineRoom={onlineRoom}
             onlinePlayers={players}
             isHostingOnline={myPlayer?.isHost ?? false}
@@ -595,6 +674,15 @@ export function App() {
       </footer>
 
       {showRules && <HowToPlayModal onClose={() => setShowRules(false)} />}
+
+      {/* Authentication Dossier Modal */}
+      {showAuthModal && (
+        <AuthModal
+          requiredForOnline={authRequiredForOnline}
+          onClose={() => setShowAuthModal(false)}
+          onSuccess={() => setShowAuthModal(false)}
+        />
+      )}
     </div>
   );
 }
