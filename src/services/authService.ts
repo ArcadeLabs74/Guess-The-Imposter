@@ -11,7 +11,7 @@ class AuthService {
   /**
    * Sign up with Email + Password and optional Display Name
    */
-  public async signUp(email: string, password: string, displayName?: string): Promise<{ user: User | null; error: AuthError | null }> {
+  public async signUp(email: string, password: string, displayName?: string): Promise<{ user: User | null; session: Session | null; error: AuthError | null }> {
     const alias = displayName?.trim() || email.split('@')[0];
     const { data, error } = await supabase.auth.signUp({
       email,
@@ -25,7 +25,7 @@ class AuthService {
       },
     });
 
-    return { user: data.user, error };
+    return { user: data.user, session: data.session, error };
   }
 
   /**

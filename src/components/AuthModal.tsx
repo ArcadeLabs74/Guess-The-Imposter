@@ -75,17 +75,35 @@ export function AuthModal({
 
     try {
       if (mode === 'signup') {
-        const { user, error } = await authService.signUp(email.trim(), password, displayName.trim());
+        const { user, session, error } = await authService.signUp(email.trim(), password, displayName.trim());
         if (error) throw error;
 
         if (user && !user.identities?.length) {
           setErrorMsg('An account with this email already exists. Try signing in.');
-        } else {
-          setSuccessMsg('Account created successfully! Check your email if verification is required.');
+          return;
+        }
+
+        // If session is already established or can be established automatically:
+        let activeSession = session;
+        if (!activeSession) {
+          const autoSignIn = await authService.signInWithEmail(email.trim(), password);
+          activeSession = autoSignIn.session;
+        }
+
+        if (activeSession) {
+          setSuccessMsg('Account created! Signed in automatically.');
+          soundManager.playPop();
           setTimeout(() => {
             if (onSuccess) onSuccess();
             onClose();
-          }, 1200);
+          }, 600);
+        } else {
+          // Supabase project has email confirmation enabled
+          setSuccessMsg('Account created! Please check your email to verify your account.');
+          setTimeout(() => {
+            if (onSuccess) onSuccess();
+            onClose();
+          }, 1500);
         }
       } else if (mode === 'signin') {
         const { error } = await authService.signInWithEmail(email.trim(), password);
